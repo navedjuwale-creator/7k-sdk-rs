@@ -44,7 +44,7 @@ pub async fn get_coin_object_ids_by_amount_with_client(
 
     let mut coin_balances: Vec<Coin> = Vec::new();
     let mut has_next_page = true;
-    let mut next_cursor = None;
+    let mut next_cursor: Option<ObjectID> = None;
     let mut used_cursors = Vec::new();
 
     while has_next_page {
