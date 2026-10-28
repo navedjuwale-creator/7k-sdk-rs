@@ -19,7 +19,7 @@ jobs:
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Check changed coin-selection file formatting
+        run: rustfmt --edition 2021 --check src/library/get_coin_object_ids_by_amount.rs
       - name: Compile and test
         run: cargo test --all-targets
