@@ -12,11 +12,37 @@ use crate::{
     },
 };
 
+fn require_two_coin_types(coin_types: &[String]) -> anyhow::Result<&str> {
+    if coin_types.len() < 2 {
+        anyhow::bail!("DeepBook V3 requires at least two pool type parameters");
+    }
+
+    Ok(coin_types[0].as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_two_coin_types;
+
+    #[test]
+    fn rejects_fewer_than_two_coin_types() {
+        assert!(require_two_coin_types(&[]).is_err());
+        assert!(require_two_coin_types(&["0x2::sui::SUI".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn accepts_two_coin_types() {
+        let types = vec!["0x2::sui::SUI".to_owned(), "0x3::coin::COIN".to_owned()];
+
+        assert_eq!(require_two_coin_types(&types).unwrap(), "0x2::sui::SUI");
+    }
+}
+
 pub async fn swap<'a>(swapper: &mut Swapper<'a>) -> Result<Argument> {
     let coin_types = swapper.get_type_params()?;
-    let coin_x_type = coin_types.get(0).unwrap();
+    let coin_x_type = require_two_coin_types(&coin_types)?;
     let swap_x_to_y =
-        normalize_token_type(&swapper.swap.swap.asset_in) == normalize_token_type(&coin_x_type);
+        normalize_token_type(&swapper.swap.swap.asset_in) == normalize_token_type(coin_x_type);
 
     let input_coin_object = swapper.input_coin_object;
 
