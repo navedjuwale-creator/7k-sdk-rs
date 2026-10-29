@@ -1,20 +1,86 @@
 use anyhow::Result;
 use sui_sdk::{SuiClient, SuiClientBuilder};
 
-// TODO: Right now, the sdk only works on mainnet
+#[derive(Debug, PartialEq, Eq)]
+enum SuiNetwork {
+    Localnet,
+    Testnet,
+    Devnet,
+    Mainnet,
+}
+
+fn parse_network(value: &str) -> Result<SuiNetwork> {
+    match value {
+        "localnet" => Ok(SuiNetwork::Localnet),
+        "testnet" => Ok(SuiNetwork::Testnet),
+        "devnet" => Ok(SuiNetwork::Devnet),
+        "mainnet" => Ok(SuiNetwork::Mainnet),
+        _ => anyhow::bail!(
+            "Unsupported SUI_NETWORK '{}'; expected localnet, testnet, devnet, or mainnet",
+            value
+        ),
+    }
+}
+
+fn ensure_network_supported(network: &SuiNetwork) -> Result<()> {
+    if *network == SuiNetwork::Mainnet {
+        anyhow::bail!(
+            "Sui mainnet is temporarily disabled until this SDK uses a supported \
+             gRPC or GraphQL transport."
+        );
+    }
+    Ok(())
+}
+
 pub async fn get_sui_client() -> Result<SuiClient> {
-    let sui_localnet = SuiClientBuilder::default()
-        .build("http://127.0.0.1:9000")
-        .await?;
+    let network_value = match std::env::var("SUI_NETWORK") {
+        Ok(value) => value,
+        Err(std::env::VarError::NotPresent) => "localnet".to_owned(),
+        Err(error) => anyhow::bail!("Could not read SUI_NETWORK: {error}"),
+    };
 
-    // Sui testnet -- https://fullnode.testnet.sui.io:443
-    let sui_testnet = SuiClientBuilder::default().build_testnet().await?;
-    println!("Sui testnet version: {}", sui_testnet.api_version());
+    let network = parse_network(&network_value)?;
+    ensure_network_supported(&network)?;
+    let builder = SuiClientBuilder::default();
 
-    // Sui devnet -- https://fullnode.devnet.sui.io:443
-    let sui_devnet = SuiClientBuilder::default().build_devnet().await?;
-    println!("Sui devnet version: {}", sui_devnet.api_version());
+    match network {
+        SuiNetwork::Localnet => Ok(builder.build_localnet().await?),
+        SuiNetwork::Testnet => Ok(builder.build_testnet().await?),
+        SuiNetwork::Devnet => Ok(builder.build_devnet().await?),
+        SuiNetwork::Mainnet => Ok(builder.build("https://fullnode.mainnet.sui.io:443").await?),
+    }
+}
 
-    // TODO
-    Ok(sui_localnet)
+#[cfg(test)]
+mod tests {
+    use super::{SuiNetwork, parse_network};
+
+    #[test]
+    fn supported_network_names_are_accepted() {
+        assert_eq!(parse_network("localnet").unwrap(), SuiNetwork::Localnet);
+        assert_eq!(parse_network("testnet").unwrap(), SuiNetwork::Testnet);
+        assert_eq!(parse_network("devnet").unwrap(), SuiNetwork::Devnet);
+        assert_eq!(parse_network("mainnet").unwrap(), SuiNetwork::Mainnet);
+    }
+
+    #[test]
+    fn mainnet_is_rejected_by_network_guard() {
+        let error = super::ensure_network_supported(&SuiNetwork::Mainnet)
+            .expect_err("mainnet must remain disabled");
+        assert!(error.to_string().contains("temporarily disabled"));
+    }
+
+    #[test]
+    fn non_mainnet_networks_are_allowed_by_the_guard() {
+        assert!(super::ensure_network_supported(&SuiNetwork::Localnet).is_ok());
+        assert!(super::ensure_network_supported(&SuiNetwork::Testnet).is_ok());
+        assert!(super::ensure_network_supported(&SuiNetwork::Devnet).is_ok());
+    }
+
+    #[test]
+    fn unsupported_network_names_are_rejected() {
+        assert!(parse_network("").is_err());
+        assert!(parse_network("production").is_err());
+        assert!(parse_network("MAINNET").is_err());
+    }
 }

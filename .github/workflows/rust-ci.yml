@@ -1,0 +1,25 @@
+name: Rust CI
+
+on:
+  push:
+    branches:
+      - fix/sui-network-config-mainnet-guard
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Check client formatting
+        run: rustfmt --edition 2024 --check src/client.rs
+      - name: Compile and test all targets
+        run: cargo test --all-targets
