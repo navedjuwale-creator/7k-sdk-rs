@@ -49,8 +49,15 @@ fn validate_swap_inputs(swap: &SorSwap) -> Result<()> {
         anyhow::bail!("Input and output asset indexes must be different");
     }
 
-    parse_amount(&swap.amount, "swap amount")?;
-    parse_amount(&swap.return_amount, "return amount")?;
+    let amount = parse_amount(&swap.amount, "swap amount")?;
+    if amount == 0 {
+        anyhow::bail!("Swap amount must be greater than zero");
+    }
+
+    let return_amount = parse_amount(&swap.return_amount, "return amount")?;
+    if return_amount == 0 {
+        anyhow::bail!("Return amount must be greater than zero");
+    }
 
     sui_sdk::types::base_types::ObjectID::from_str(&swap.pool_id)
         .map_err(|e| anyhow::anyhow!("Invalid pool ID: {e}"))?;
@@ -162,6 +169,21 @@ fn validate_route_inputs(route: &[TxSorSwap]) -> Result<()> {
             anyhow::bail!(
                 "Invalid swap at route hop {}: output asset is absent from pool tokens",
                 index + 1
+            );
+        }
+    }
+
+    for (index, pair) in route.windows(2).enumerate() {
+        let output_type = TypeTag::from_str(&pair[0].swap.asset_out)
+            .map_err(|e| anyhow::anyhow!("Invalid output asset type: {e}"))?;
+        let next_input_type = TypeTag::from_str(&pair[1].swap.asset_in)
+            .map_err(|e| anyhow::anyhow!("Invalid input asset type: {e}"))?;
+
+        if output_type != next_input_type {
+            anyhow::bail!(
+                "Disconnected swap route between hops {} and {}",
+                index + 1,
+                index + 2
             );
         }
     }
@@ -278,6 +300,7 @@ mod swap_input_validation_tests {
     const SUI: &str = "0x2::sui::SUI";
     const USDC: &str =
         "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC";
+    const OTHER: &str = "0x2::other::OTHER";
 
     fn sample_swap(input: &str, output: &str, pool_id: &str) -> SorSwap {
         SorSwap {
@@ -516,11 +539,19 @@ mod swap_input_validation_tests {
     }
 
     #[test]
-    fn zero_amounts_are_allowed() {
+    fn zero_amounts_are_rejected() {
         let mut swap = sample_swap(SUI, USDC, "0x2");
         swap.amount = "0".to_owned();
+        assert!(validate_swap_inputs(&swap).is_err());
+
+        swap.amount = "1".to_owned();
         swap.return_amount = "0".to_owned();
-        assert!(validate_swap_inputs(&swap).is_ok());
+        assert!(validate_swap_inputs(&swap).is_err());
+    }
+
+    #[test]
+    fn positive_amounts_are_accepted() {
+        assert!(validate_swap_inputs(&sample_swap(SUI, USDC, "0x2")).is_ok());
     }
 
     #[test]
@@ -538,6 +569,21 @@ mod swap_input_validation_tests {
         assert!(validate_route_inputs(&[sample_route_swap(vec![SUI, USDC])]).is_ok());
 
         assert!(validate_route_inputs(&[sample_route_swap(vec![SUI, SUI])]).is_err());
+    }
+
+    #[test]
+    fn connected_route_is_accepted_and_disconnected_route_is_rejected() {
+        let first = sample_route_swap(vec![SUI, USDC]);
+
+        let mut connected_second = sample_route_swap(vec![USDC, SUI]);
+        connected_second.swap.asset_in = USDC.to_owned();
+        connected_second.swap.asset_out = SUI.to_owned();
+        assert!(validate_route_inputs(&[first.clone(), connected_second]).is_ok());
+
+        let mut disconnected_second = sample_route_swap(vec![OTHER, SUI]);
+        disconnected_second.swap.asset_in = OTHER.to_owned();
+        disconnected_second.swap.asset_out = SUI.to_owned();
+        assert!(validate_route_inputs(&[first, disconnected_second]).is_err());
     }
 
     #[test]
