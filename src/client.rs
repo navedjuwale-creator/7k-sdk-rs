@@ -32,15 +32,23 @@ fn ensure_network_supported(network: &SuiNetwork) -> Result<()> {
     Ok(())
 }
 
+fn select_network(value: Option<&str>) -> Result<SuiNetwork> {
+    let network = match value {
+        Some(value) => parse_network(value)?,
+        None => SuiNetwork::Localnet,
+    };
+    ensure_network_supported(&network)?;
+    Ok(network)
+}
+
 pub async fn get_sui_client() -> Result<SuiClient> {
     let network_value = match std::env::var("SUI_NETWORK") {
-        Ok(value) => value,
-        Err(std::env::VarError::NotPresent) => "localnet".to_owned(),
+        Ok(value) => Some(value),
+        Err(std::env::VarError::NotPresent) => None,
         Err(error) => anyhow::bail!("Could not read SUI_NETWORK: {error}"),
     };
 
-    let network = parse_network(&network_value)?;
-    ensure_network_supported(&network)?;
+    let network = select_network(network_value.as_deref())?;
     let builder = SuiClientBuilder::default();
 
     match network {
@@ -53,7 +61,36 @@ pub async fn get_sui_client() -> Result<SuiClient> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SuiNetwork, parse_network};
+    use super::{parse_network, select_network, SuiNetwork};
+
+    #[test]
+    fn missing_network_defaults_to_localnet() {
+        assert_eq!(select_network(None).unwrap(), SuiNetwork::Localnet);
+    }
+
+    #[test]
+    fn supported_non_mainnet_networks_are_selectable() {
+        assert_eq!(
+            select_network(Some("localnet")).unwrap(),
+            SuiNetwork::Localnet
+        );
+        assert_eq!(
+            select_network(Some("testnet")).unwrap(),
+            SuiNetwork::Testnet
+        );
+        assert_eq!(select_network(Some("devnet")).unwrap(), SuiNetwork::Devnet);
+    }
+
+    #[test]
+    fn mainnet_is_rejected_during_selection() {
+        assert!(select_network(Some("mainnet")).is_err());
+    }
+
+    #[test]
+    fn invalid_network_is_rejected_during_selection() {
+        assert!(select_network(Some("production")).is_err());
+        assert!(select_network(Some("MAINNET")).is_err());
+    }
 
     #[test]
     fn supported_network_names_are_accepted() {
