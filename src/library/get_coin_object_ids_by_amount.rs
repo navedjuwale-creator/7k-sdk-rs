@@ -30,6 +30,7 @@ pub async fn get_coin_object_ids_by_amount(
     amount: u64,
     coin_type: &str,
 ) -> Result<(Vec<ObjectID>, Vec<Coin>, u64)> {
+    ensure_positive_amount(amount)?;
     let client = get_sui_client().await?;
     get_coin_object_ids_by_amount_with_client(&client, address, amount, coin_type).await
 }
