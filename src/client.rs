@@ -55,7 +55,10 @@ pub async fn get_sui_client() -> Result<SuiClient> {
         SuiNetwork::Localnet => Ok(builder.build_localnet().await?),
         SuiNetwork::Testnet => Ok(builder.build_testnet().await?),
         SuiNetwork::Devnet => Ok(builder.build_devnet().await?),
-        SuiNetwork::Mainnet => Ok(builder.build("https://fullnode.mainnet.sui.io:443").await?),
+        SuiNetwork::Mainnet => anyhow::bail!(
+    "Sui mainnet is temporarily disabled until this SDK uses a supported \
+     gRPC or GraphQL transport."
+),
     }
 }
 
