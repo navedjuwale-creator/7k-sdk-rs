@@ -22,14 +22,20 @@ fn parse_network(value: &str) -> Result<SuiNetwork> {
     }
 }
 
+fn configured_network(value: Option<&str>) -> Result<SuiNetwork> {
+    let value = value.ok_or_else(|| {
+        anyhow::anyhow!("SUI_NETWORK is not set; set it to localnet, testnet, devnet, or mainnet")
+    })?;
+    parse_network(value)
+}
+
 pub async fn get_sui_client() -> Result<SuiClient> {
-    let network_value = match std::env::var("SUI_NETWORK") {
-        Ok(value) => value,
-        Err(std::env::VarError::NotPresent) => "localnet".to_owned(),
+    let network_value = std::env::var("SUI_NETWORK");
+    let network = match network_value {
+        Ok(value) => configured_network(Some(&value))?,
+        Err(std::env::VarError::NotPresent) => configured_network(None)?,
         Err(error) => anyhow::bail!("Could not read SUI_NETWORK: {error}"),
     };
-
-    let network = parse_network(&network_value)?;
     let builder = SuiClientBuilder::default();
 
     match network {
@@ -42,7 +48,7 @@ pub async fn get_sui_client() -> Result<SuiClient> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_network, SuiNetwork};
+    use super::{SuiNetwork, parse_network};
 
     #[test]
     fn supported_network_names_are_accepted() {
@@ -57,5 +63,20 @@ mod tests {
         assert!(parse_network("").is_err());
         assert!(parse_network("production").is_err());
         assert!(parse_network("MAINNET").is_err());
+    }
+
+    #[test]
+    fn missing_network_configuration_is_rejected() {
+        let error = super::configured_network(None).unwrap_err();
+        assert!(error.to_string().contains("SUI_NETWORK is not set"));
+    }
+
+    #[test]
+    fn configured_network_names_are_validated() {
+        assert_eq!(
+            super::configured_network(Some("testnet")).unwrap(),
+            SuiNetwork::Testnet
+        );
+        assert!(super::configured_network(Some("production")).is_err());
     }
 }
