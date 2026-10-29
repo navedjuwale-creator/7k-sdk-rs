@@ -3,8 +3,8 @@ use std::str::FromStr;
 use anyhow::Result;
 use move_core_types::language_storage::StructTag;
 use sui_sdk::{
+    types::{transaction::Argument, TypeTag},
     SuiClient,
-    types::{TypeTag, transaction::Argument},
 };
 
 use crate::{
@@ -73,8 +73,8 @@ fn validate_protocol_inputs(item: &TxSorSwap) -> Result<()> {
     let minimum_type_params = match pool_type {
         SourceDex::Aftermath => Some(1),
         SourceDex::Deepbook => Some(2),
-        SourceDex::DeepbookV3 => Some(1),
-        SourceDex::KriyaV3 | SourceDex::Turbos => Some(0),
+        // These adapters construct swap calls from both pool coin types.
+        SourceDex::DeepbookV3 | SourceDex::KriyaV3 | SourceDex::Turbos => Some(2),
         _ => None,
     };
 
@@ -377,6 +377,51 @@ mod swap_input_validation_tests {
             ("lot_size".to_owned(), "1".to_owned()),
         ]));
         assert!(validate_protocol_inputs(&item).is_ok());
+    }
+
+    #[test]
+    fn deepbook_v3_requires_two_pool_type_parameters() {
+        let mut item = sample_route_swap(vec![SUI, USDC]);
+        item.pool.pool_type = SourceDex::DeepbookV3;
+
+        item.swap.extra = Some(HashMap::from([(
+            "pool_struct_tag".to_owned(),
+            "0x2::pool::Pool<0x2::sui::SUI>".to_owned(),
+        )]));
+        assert!(validate_protocol_inputs(&item).is_err());
+
+        item.swap.extra = Some(HashMap::from([(
+            "pool_struct_tag".to_owned(),
+            "0x2::pool::Pool<0x2::sui::SUI,0x3::coin::COIN>".to_owned(),
+        )]));
+        assert!(validate_protocol_inputs(&item).is_ok());
+    }
+
+    #[test]
+    fn kriya_v3_and_turbos_require_two_pool_type_parameters() {
+        for pool_type in [SourceDex::KriyaV3, SourceDex::Turbos] {
+            let mut item = sample_route_swap(vec![SUI, USDC]);
+            item.pool.pool_type = pool_type;
+            item.swap.extra = Some(HashMap::from([(
+                "pool_struct_tag".to_owned(),
+                "0x2::pool::Pool<0x2::sui::SUI>".to_owned(),
+            )]));
+            assert!(
+                validate_protocol_inputs(&item).is_err(),
+                "{} accepted one type parameter",
+                pool_type.as_str()
+            );
+
+            item.swap.extra = Some(HashMap::from([(
+                "pool_struct_tag".to_owned(),
+                "0x2::pool::Pool<0x2::sui::SUI,0x3::coin::COIN>".to_owned(),
+            )]));
+            assert!(
+                validate_protocol_inputs(&item).is_ok(),
+                "{} rejected two type parameters",
+                pool_type.as_str()
+            );
+        }
     }
 
     #[test]
