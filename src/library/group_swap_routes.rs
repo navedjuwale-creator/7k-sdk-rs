@@ -8,10 +8,16 @@ use crate::{
 };
 
 pub fn group_swap_routes(quote_response: &QuoteResponse) -> Result<Vec<Vec<TxSorSwap>>> {
-    if quote_response.routes.is_none() || quote_response.swaps.len() == 0 {
+    if quote_response.swaps.is_empty() {
         return Ok(vec![]);
     }
-    let pool_details = map_pool_ids_to_details(quote_response.routes.as_ref().unwrap());
+
+    let routes = quote_response
+        .routes
+        .as_deref()
+        .ok_or_else(|| anyhow::anyhow!("Quote response contains swaps but no route metadata"))?;
+
+    let pool_details = map_pool_ids_to_details(routes);
     let items: Vec<TxSorSwap> = get_tx_sor_swaps(&quote_response.swaps, &pool_details)?;
     let mut grouped_items: Vec<Vec<TxSorSwap>> = vec![];
     let mut current_group: Vec<TxSorSwap> = vec![];
@@ -130,6 +136,44 @@ mod tests {
             arguments: vec![],
             extra: None,
         }
+    }
+
+    fn quote_response(routes: Option<Vec<SorRoute>>, swaps: Vec<SorSwap>) -> QuoteResponse {
+        QuoteResponse {
+            effective_price: None,
+            effective_price_reserved: None,
+            price_impact: None,
+            swap_amount: "1".to_owned(),
+            return_amount: "1".to_owned(),
+            return_amount_with_decimal: "1".to_owned(),
+            return_amount_consider_gas_fees: None,
+            return_amount_without_swap_fees: None,
+            swap_amount_with_decimal: "1".to_owned(),
+            token_addresses: vec![],
+            token_in: "0x2::sui::SUI".to_owned(),
+            token_out: "0x3::coin::COIN".to_owned(),
+            market_sp: "1".to_owned(),
+            routes,
+            swaps,
+            warning: String::new(),
+        }
+    }
+
+    #[test]
+    fn missing_route_metadata_with_swaps_returns_error() {
+        let response = quote_response(
+            None,
+            vec![swap("pool-1", "0x2::sui::SUI", "0x3::coin::COIN")],
+        );
+
+        let error = group_swap_routes(&response).unwrap_err();
+        assert!(error.to_string().contains("no route metadata"));
+    }
+
+    #[test]
+    fn empty_swaps_need_no_route_metadata() {
+        let response = quote_response(None, vec![]);
+        assert!(group_swap_routes(&response).unwrap().is_empty());
     }
 
     #[test]
