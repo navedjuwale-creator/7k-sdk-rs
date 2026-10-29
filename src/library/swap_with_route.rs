@@ -106,13 +106,9 @@ fn validate_protocol_inputs(item: &TxSorSwap) -> Result<()> {
             }
         }
         SourceDex::Deepbook => {
-            let lot_size = parse_amount(
-                required_extra_value(&item.swap, "lot_size")?,
-                "DeepBook lot_size",
-            )?;
-            if lot_size == 0 {
-                anyhow::bail!("DeepBook lot_size must be greater than zero");
-            }
+            anyhow::bail!(
+                "DeepBook V2 (0xdee9) is deprecated; refusing to build a swap until a supported implementation is verified"
+            );
         }
         SourceDex::FlowxV3 => {
             if item.pool.all_tokens.len() < 2 {
@@ -387,40 +383,18 @@ mod swap_input_validation_tests {
     }
 
     #[test]
-    fn deepbook_requires_lot_size_and_two_type_parameters() {
+    fn deprecated_deepbook_v2_is_rejected_before_transaction_building() {
         let mut item = sample_route_swap(vec![SUI, USDC]);
         item.pool.pool_type = SourceDex::Deepbook;
-        assert!(validate_protocol_inputs(&item).is_err());
 
-        item.swap.extra = Some(HashMap::from([
-            (
-                "pool_struct_tag".to_owned(),
-                "0x2::pool::Pool<0x2::sui::SUI>".to_owned(),
-            ),
-            ("lot_size".to_owned(), "1".to_owned()),
-        ]));
-        assert!(validate_protocol_inputs(&item).is_err());
-
-        item.swap.extra = Some(HashMap::from([
-            (
-                "pool_struct_tag".to_owned(),
-                "0x2::pool::Pool<0x2::sui::SUI,0x3::coin::COIN>".to_owned(),
-            ),
-            ("lot_size".to_owned(), "1".to_owned()),
-        ]));
-        assert!(validate_protocol_inputs(&item).is_ok());
-
-        for invalid_lot_size in ["", "abc", "-1", "18446744073709551616", "0"] {
-            item.swap
-                .extra
-                .as_mut()
-                .unwrap()
-                .insert("lot_size".to_owned(), invalid_lot_size.to_owned());
-            assert!(
-                validate_protocol_inputs(&item).is_err(),
-                "accepted invalid DeepBook lot_size: {invalid_lot_size:?}"
-            );
-        }
+        let error =
+            validate_protocol_inputs(&item).expect_err("deprecated DeepBook V2 must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("DeepBook V2 (0xdee9) is deprecated"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
