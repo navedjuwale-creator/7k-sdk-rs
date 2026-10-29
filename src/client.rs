@@ -29,6 +29,17 @@ fn configured_network(value: Option<&str>) -> Result<SuiNetwork> {
     parse_network(value)
 }
 
+fn ensure_network_supported(network: &SuiNetwork) -> Result<()> {
+    if *network == SuiNetwork::Mainnet {
+        anyhow::bail!(
+            "Sui mainnet is temporarily disabled: this SDK version uses the legacy \
+             JSON-RPC transport. Migrate to a supported Sui gRPC or GraphQL client \
+             before enabling mainnet."
+        );
+    }
+    Ok(())
+}
+
 pub async fn get_sui_client() -> Result<SuiClient> {
     let network_value = std::env::var("SUI_NETWORK");
     let network = match network_value {
@@ -36,19 +47,28 @@ pub async fn get_sui_client() -> Result<SuiClient> {
         Err(std::env::VarError::NotPresent) => configured_network(None)?,
         Err(error) => anyhow::bail!("Could not read SUI_NETWORK: {error}"),
     };
+    ensure_network_supported(&network)?;
+
     let builder = SuiClientBuilder::default();
 
     match network {
         SuiNetwork::Localnet => Ok(builder.build_localnet().await?),
         SuiNetwork::Testnet => Ok(builder.build_testnet().await?),
         SuiNetwork::Devnet => Ok(builder.build_devnet().await?),
-        SuiNetwork::Mainnet => Ok(builder.build("https://fullnode.mainnet.sui.io:443").await?),
+        SuiNetwork::Mainnet => unreachable!("mainnet rejected above"),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{parse_network, SuiNetwork};
+
+    #[test]
+    fn mainnet_is_rejected_until_supported_transport_is_available() {
+        let error = super::ensure_network_supported(&SuiNetwork::Mainnet)
+            .expect_err("mainnet must remain disabled on the legacy transport");
+        assert!(error.to_string().contains("temporarily disabled"));
+    }
 
     #[test]
     fn supported_network_names_are_accepted() {
