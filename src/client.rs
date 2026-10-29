@@ -56,10 +56,8 @@ pub async fn get_sui_client() -> Result<SuiClient> {
         SuiNetwork::Testnet => Ok(builder.build_testnet().await?),
         SuiNetwork::Devnet => Ok(builder.build_devnet().await?),
         SuiNetwork::Mainnet => anyhow::bail!(
-          "Sui mainnet is temporarily disabled until this SDK uses a 
-    supported \
-           gRPC or GraphQL transport."
-       ),
+            "Sui mainnet is temporarily disabled until this SDK uses a supported gRPC or GraphQL transport."
+        ),
     }
 }
 
