@@ -48,7 +48,7 @@ pub async fn get_sui_client() -> Result<SuiClient> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SuiNetwork, parse_network};
+    use super::{parse_network, SuiNetwork};
 
     #[test]
     fn supported_network_names_are_accepted() {
