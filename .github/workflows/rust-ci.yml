@@ -20,6 +20,6 @@ jobs:
           components: rustfmt
       - uses: Swatinem/rust-cache@v2
       - name: Check changed Rust files formatting
-        run: rustfmt --edition 2021 --check src/client.rs src/library/get_coin_object_ids_by_amount.rs src/library/group_swap_routes.rs src/library/swap_with_route.rs
+        run: rustfmt --edition 2021 --check src/client.rs src/library/get_coin_object_ids_by_amount.rs src/library/group_swap_routes.rs src/library/protocols/flowx_v3.rs src/library/swap_with_route.rs
       - name: Compile and test
         run: cargo test --all-targets

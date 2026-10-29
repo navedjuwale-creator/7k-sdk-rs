@@ -1,6 +1,6 @@
 use super::get_adjusted_sqrt_price_limit;
 use crate::{
-    library::swap_with_route::{Swapper, ToTypeTags, parse_amount, required_extra_value},
+    library::swap_with_route::{parse_amount, required_extra_value, Swapper, ToTypeTags},
     utils::{sui::ObjectRefFetcher, token::normalize_token_type},
 };
 use anyhow::Result;
