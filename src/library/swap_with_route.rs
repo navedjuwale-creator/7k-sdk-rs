@@ -567,6 +567,21 @@ mod swap_input_validation_tests {
     }
 
     #[test]
+    fn route_preflight_rejects_zero_amount() {
+        let mut item = sample_route_swap(vec![SUI, USDC]);
+        item.swap.amount = "0".to_owned();
+
+        let error = validate_route_inputs(&[item])
+            .expect_err("zero-amount route must be rejected during preflight");
+        assert!(
+            error
+                .to_string()
+                .contains("Swap amount must be greater than zero"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn empty_route_is_rejected() {
         assert!(validate_route_inputs(&[]).is_err());
     }
