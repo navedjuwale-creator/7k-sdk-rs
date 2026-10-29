@@ -1,6 +1,6 @@
 use crate::{
     destruct,
-    library::swap_with_route::{Swapper, ToTypeTags},
+    library::swap_with_route::{parse_amount, required_extra_value, Swapper, ToTypeTags},
     utils::sui::{ArgumentExt, ObjectRefFetcher},
 };
 use anyhow::Result;
@@ -23,14 +23,13 @@ pub async fn swap<'a>(swapper: &mut Swapper<'a>) -> Result<Argument> {
     let cfg = &swapper.config.deepbook;
     let pool_id = c.shared_obj_mut(&swapper.swap.swap.pool_id).await?;
 
-    let lot_size = swapper
-        .swap
-        .swap
-        .extra
-        .as_ref()
-        .unwrap()
-        .get("lot_size")
-        .unwrap();
+    let lot_size = parse_amount(
+        required_extra_value(&swapper.swap.swap, "lot_size")?,
+        "DeepBook lot_size",
+    )?;
+    if lot_size == 0 {
+        anyhow::bail!("DeepBook lot_size must be greater than zero");
+    }
 
     let result;
 

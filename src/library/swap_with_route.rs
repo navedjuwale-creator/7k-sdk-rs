@@ -106,7 +106,13 @@ fn validate_protocol_inputs(item: &TxSorSwap) -> Result<()> {
             }
         }
         SourceDex::Deepbook => {
-            required_extra_value(&item.swap, "lot_size")?;
+            let lot_size = parse_amount(
+                required_extra_value(&item.swap, "lot_size")?,
+                "DeepBook lot_size",
+            )?;
+            if lot_size == 0 {
+                anyhow::bail!("DeepBook lot_size must be greater than zero");
+            }
         }
         SourceDex::FlowxV3 => {
             if item.pool.all_tokens.len() < 2 {
@@ -403,6 +409,18 @@ mod swap_input_validation_tests {
             ("lot_size".to_owned(), "1".to_owned()),
         ]));
         assert!(validate_protocol_inputs(&item).is_ok());
+
+        for invalid_lot_size in ["", "abc", "-1", "18446744073709551616", "0"] {
+            item.swap
+                .extra
+                .as_mut()
+                .unwrap()
+                .insert("lot_size".to_owned(), invalid_lot_size.to_owned());
+            assert!(
+                validate_protocol_inputs(&item).is_err(),
+                "accepted invalid DeepBook lot_size: {invalid_lot_size:?}"
+            );
+        }
     }
 
     #[test]
