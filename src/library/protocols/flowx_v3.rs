@@ -1,6 +1,6 @@
 use super::get_adjusted_sqrt_price_limit;
 use crate::{
-    library::swap_with_route::{Swapper, ToTypeTags},
+    library::swap_with_route::{Swapper, ToTypeTags, parse_amount, required_extra_value},
     utils::{sui::ObjectRefFetcher, token::normalize_token_type},
 };
 use anyhow::Result;
@@ -9,14 +9,10 @@ use sui_sdk::types::transaction::Argument;
 pub async fn swap<'a>(swapper: &mut Swapper<'a>) -> Result<Argument> {
     let swap_x_to_y = swapper.swap.swap_x_to_y;
 
-    let swap_fee_rate = swapper
-        .swap
-        .swap
-        .extra
-        .as_ref()
-        .unwrap()
-        .get("swap_fee_rate")
-        .unwrap();
+    let swap_fee_rate = parse_amount(
+        required_extra_value(&swapper.swap.swap, "swap_fee_rate")?,
+        "FlowX V3 swap_fee_rate",
+    )?;
 
     let config = &swapper.config.flowx_v3;
 

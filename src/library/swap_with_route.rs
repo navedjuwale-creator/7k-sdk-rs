@@ -26,7 +26,7 @@ fn parse_pool_struct_tag(extra: &std::collections::HashMap<String, String>) -> R
     StructTag::from_str(pool_struct_tag).map_err(Into::into)
 }
 
-fn parse_amount(value: &str, field: &str) -> Result<u64> {
+pub(super) fn parse_amount(value: &str, field: &str) -> Result<u64> {
     value.parse::<u64>().map_err(|e| {
         anyhow::anyhow!(
             "Invalid {field} '{}': expected a non-negative integer ({e})",
@@ -65,7 +65,7 @@ fn validate_swap_inputs(swap: &SorSwap) -> Result<()> {
     Ok(())
 }
 
-fn required_extra_value<'a>(swap: &'a SorSwap, key: &str) -> Result<&'a str> {
+pub(super) fn required_extra_value<'a>(swap: &'a SorSwap, key: &str) -> Result<&'a str> {
     swap.extra
         .as_ref()
         .and_then(|extra| extra.get(key))
@@ -112,7 +112,10 @@ fn validate_protocol_inputs(item: &TxSorSwap) -> Result<()> {
             if item.pool.all_tokens.len() < 2 {
                 anyhow::bail!("FlowX V3 requires at least two pool tokens");
             }
-            required_extra_value(&item.swap, "swap_fee_rate")?;
+            parse_amount(
+                required_extra_value(&item.swap, "swap_fee_rate")?,
+                "FlowX V3 swap_fee_rate",
+            )?;
         }
         SourceDex::Obric => {
             if item.pool.all_tokens.len() < 2 {
@@ -448,10 +451,22 @@ mod swap_input_validation_tests {
     }
 
     #[test]
-    fn flowx_v3_requires_fee_metadata_and_two_pool_tokens() {
+    fn flowx_v3_requires_numeric_fee_metadata_and_two_pool_tokens() {
         let mut item = sample_route_swap(vec![SUI, USDC]);
         item.pool.pool_type = SourceDex::FlowxV3;
         assert!(validate_protocol_inputs(&item).is_err());
+
+        for invalid_fee in ["", "abc", "-1", "18446744073709551616"] {
+            item.swap
+                .extra
+                .as_mut()
+                .unwrap()
+                .insert("swap_fee_rate".to_owned(), invalid_fee.to_owned());
+            assert!(
+                validate_protocol_inputs(&item).is_err(),
+                "accepted invalid FlowX V3 fee: {invalid_fee:?}"
+            );
+        }
 
         item.swap
             .extra
