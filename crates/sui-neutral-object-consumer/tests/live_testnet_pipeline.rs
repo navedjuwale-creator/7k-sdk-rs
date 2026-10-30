@@ -3,16 +3,12 @@
 //! This test performs only GetServiceInfo and GetObject RPCs. It does not
 //! construct transaction arguments, sign, submit, or mutate chain state.
 
-use sui_grpc_inventory::{
-    SuiGrpcNetwork, SuiGrpcObjectReader,
-    neutral::to_neutral_record,
-};
+use sui_grpc_inventory::{SuiGrpcNetwork, SuiGrpcObjectReader, neutral::to_neutral_record};
 use sui_neutral_object_boundary::NeutralObjectRecord;
 use sui_neutral_object_consumer::parse_neutral_json;
 
 const TESTNET_ENDPOINT: &str = "https://fullnode.testnet.sui.io:443";
-const EXPECTED_TESTNET_CHAIN_ID: &str =
-    "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
+const EXPECTED_TESTNET_CHAIN_ID: &str = "69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD";
 const SYSTEM_STATE_OBJECT_ID: &str =
     "0x0000000000000000000000000000000000000000000000000000000000000005";
 
@@ -37,10 +33,19 @@ async fn live_testnet_object_round_trips_through_neutral_pipeline() {
         SYSTEM_STATE_OBJECT_ID
     );
     assert!(source.version > 0, "live object version must be nonzero");
-    assert!(!source.digest.is_empty(), "live object digest must be present");
-    assert!(!source.object_type.is_empty(), "live object type must be present");
     assert!(
-        source.contents_bcs.as_ref().is_some_and(|bytes| !bytes.is_empty()),
+        !source.digest.is_empty(),
+        "live object digest must be present"
+    );
+    assert!(
+        !source.object_type.is_empty(),
+        "live object type must be present"
+    );
+    assert!(
+        source
+            .contents_bcs
+            .as_ref()
+            .is_some_and(|bytes| !bytes.is_empty()),
         "requested live BCS contents must be present"
     );
 
@@ -60,7 +65,10 @@ async fn live_testnet_object_round_trips_through_neutral_pipeline() {
     assert_eq!(consumed.version, source.version);
     assert_eq!(consumed.digest, source.digest);
     assert_eq!(consumed.object_type, source.object_type);
-    assert_eq!(consumed.contents_bcs_base64, expected_neutral.contents_bcs_base64);
+    assert_eq!(
+        consumed.contents_bcs_base64,
+        expected_neutral.contents_bcs_base64
+    );
 
     // Independently deserialize the serialized JSON to ensure the public schema
     // representation is still directly consumable as the shared contract type.
