@@ -4,7 +4,59 @@ use futures_util::{Stream, StreamExt};
 use std::time::Duration;
 
 use sui_rpc::proto::sui::rpc::v2::ListOwnedObjectsRequest;
+use sui_rpc::proto::sui::rpc::v2::{
+    state_service_client::StateServiceClient, Object,
+};
 use sui_rpc::Client;
+use std::collections::HashSet;
+use tonic::transport::Channel;
+
+#[derive(Debug)]
+enum PaginationError {
+    Rpc(tonic::Status),
+    RepeatedContinuationToken,
+    PageLimitExceeded { max_pages: usize },
+}
+
+async fn collect_owned_objects_bounded(
+    client: &mut StateServiceClient<Channel>,
+    mut request: ListOwnedObjectsRequest,
+    max_pages: usize,
+) -> Result<Vec<Object>, PaginationError> {
+    if max_pages == 0 {
+        return Err(PaginationError::PageLimitExceeded { max_pages });
+    }
+
+    let mut objects = Vec::new();
+    let mut seen_tokens: HashSet<Vec<u8>> = HashSet::new();
+    let mut pages_fetched = 0usize;
+
+    loop {
+        if let Some(token) = request.page_token.as_ref() {
+            if !seen_tokens.insert(token.to_vec()) {
+                return Err(PaginationError::RepeatedContinuationToken);
+            }
+        }
+
+        pages_fetched += 1;
+        let response = client
+            .list_owned_objects(tonic::Request::new(request.clone()))
+            .await
+            .map_err(PaginationError::Rpc)?
+            .into_inner();
+
+        objects.extend(response.objects);
+        match response.next_page_token {
+            Some(token) => {
+                if pages_fetched >= max_pages {
+                    return Err(PaginationError::PageLimitExceeded { max_pages });
+                }
+                request.page_token = Some(token);
+            }
+            None => return Ok(objects),
+        }
+    }
+}
 
 const FIXTURE_OWNER: &str =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -328,6 +380,73 @@ mod tests {
             *seen.lock().expect("request log lock"),
             vec![None, Some(b"page-2".to_vec())]
         );
+        let _ = shutdown.send(());
+    }
+
+    async fn direct_state_client(endpoint: String) -> StateServiceClient<Channel> {
+        let channel = tonic::transport::Endpoint::from_shared(endpoint)
+            .expect("valid mock endpoint")
+            .connect()
+            .await
+            .expect("connect to mock endpoint");
+        StateServiceClient::new(channel)
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_detects_repeated_continuation_token() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::RepeatToken).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(&mut client, fixture_request(), 10).await;
+
+        assert!(matches!(result, Err(PaginationError::RepeatedContinuationToken)));
+        assert_eq!(
+            *seen.lock().expect("request log lock"),
+            vec![None, Some(b"repeat".to_vec()), Some(b"repeat".to_vec())]
+        );
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_collects_pages_and_stops_at_end_token() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let mut client = direct_state_client(endpoint).await;
+        let objects = collect_owned_objects_bounded(&mut client, fixture_request(), 2)
+            .await
+            .expect("two pages should complete");
+
+        assert_eq!(objects.len(), 2);
+        assert_eq!(objects[0].object_id.as_deref(), Some("fixture-object-1"));
+        assert_eq!(objects[1].object_id.as_deref(), Some("fixture-object-2"));
+        assert_eq!(
+            *seen.lock().expect("request log lock"),
+            vec![None, Some(b"page-2".to_vec())]
+        );
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_fails_closed_when_page_budget_is_exhausted() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(&mut client, fixture_request(), 1).await;
+
+        assert!(matches!(
+            result,
+            Err(PaginationError::PageLimitExceeded { max_pages: 1 })
+        ));
+        assert_eq!(seen.lock().expect("request log lock").len(), 1);
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_fails_closed_on_later_page_rpc_error() {
+        let (endpoint, seen, shutdown) =
+            start_mock_server(PageScenario::FailOnSecondPage).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(&mut client, fixture_request(), 10).await;
+
+        assert!(matches!(result, Err(PaginationError::Rpc(_))));
+        assert_eq!(seen.lock().expect("request log lock").len(), 2);
         let _ = shutdown.send(());
     }
 
