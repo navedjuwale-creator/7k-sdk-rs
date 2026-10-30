@@ -365,7 +365,6 @@ mod tests {
         object
     }
 
-
     struct RecordingSource {
         response: Option<GetObjectResponse>,
         captured: std::sync::Arc<std::sync::Mutex<Option<GetObjectRequest>>>,
@@ -430,14 +429,24 @@ mod tests {
             network: network(CHAIN),
         };
 
-        let record = reader.get_object_with_contents(OBJECT_ID, true).await.unwrap();
+        let record = reader
+            .get_object_with_contents(OBJECT_ID, true)
+            .await
+            .unwrap();
         assert_eq!(record.contents_bcs, Some(vec![1, 2, 3]));
 
         let request = captured.lock().unwrap().clone().unwrap();
         let paths = request.read_mask.unwrap().paths;
         assert_eq!(
             paths,
-            vec!["object_id", "version", "digest", "owner", "object_type", "contents"]
+            vec![
+                "object_id",
+                "version",
+                "digest",
+                "owner",
+                "object_type",
+                "contents"
+            ]
         );
     }
 
@@ -467,18 +476,20 @@ mod tests {
         let endpoint = "https://fullnode.testnet.sui.io:443";
         let expected = std::env::var("SUI_TESTNET_EXPECTED_CHAIN_ID")
             .expect("SUI_TESTNET_EXPECTED_CHAIN_ID must be explicitly configured");
-        let mut reader = SuiGrpcObjectReader::connect(
-            SuiGrpcNetwork::new(endpoint, expected.clone()).unwrap()
-        )
-        .await
-        .unwrap();
+        let mut reader =
+            SuiGrpcObjectReader::connect(SuiGrpcNetwork::new(endpoint, expected.clone()).unwrap())
+                .await
+                .unwrap();
         assert_eq!(reader.chain_id(), expected);
-        let record = reader.get_object(
-            "0x0000000000000000000000000000000000000000000000000000000000000005"
-        ).await.unwrap();
+        let record = reader
+            .get_object("0x0000000000000000000000000000000000000000000000000000000000000005")
+            .await
+            .unwrap();
         assert_eq!(record.chain_id, expected);
-        assert_eq!(record.object_id.to_ascii_lowercase(),
-            "0x0000000000000000000000000000000000000000000000000000000000000005");
+        assert_eq!(
+            record.object_id.to_ascii_lowercase(),
+            "0x0000000000000000000000000000000000000000000000000000000000000005"
+        );
         eprintln!(
             "LIVE_SUI_TESTNET_OK chain_id={} object_version={} object_type={}",
             record.chain_id, record.version, record.object_type
