@@ -4,8 +4,8 @@
 //! Sui SDK and does not construct transaction arguments.
 
 use crate::{SuiObjectRecord, SuiOwner};
-use anyhow::{anyhow, bail, Result};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use anyhow::{Result, anyhow, bail};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sui_neutral_object_boundary::{NeutralObjectRecord, NeutralOwner, SCHEMA_VERSION};
 
 /// Convert a validated gRPC read record to the dependency-neutral schema.
