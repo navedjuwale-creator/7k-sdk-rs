@@ -1,0 +1,34 @@
+name: Sui live neutral pipeline
+# Live, read-only Testnet validation of gRPC reader → producer → consumer.
+on:
+  push:
+    branches:
+      - test/sui-live-neutral-pipeline
+    paths:
+      - "crates/sui-neutral-object-consumer/**"
+      - "crates/sui-neutral-object-boundary/**"
+      - "crates/sui-grpc-inventory/**"
+      - ".github/workflows/sui-live-neutral-pipeline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-live-neutral-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-testnet-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format live pipeline test
+        run: rustfmt --edition 2024 --check crates/sui-neutral-object-consumer/tests/live_testnet_pipeline.rs
+      - name: Compile isolated producer and consumer dependency domains
+        run: cargo check --manifest-path crates/sui-neutral-object-consumer/Cargo.toml --all-targets
+      - name: Run unit and live read-only Testnet pipeline tests
+        run: cargo test --manifest-path crates/sui-neutral-object-consumer/Cargo.toml --all-targets -- --nocapture
