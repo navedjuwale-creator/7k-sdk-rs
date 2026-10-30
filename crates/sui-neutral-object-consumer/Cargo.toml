@@ -1,0 +1,10 @@
+[package]
+name = "sui-neutral-object-consumer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+base64 = "0.22"
+sui-neutral-object-boundary = { path = "../sui-neutral-object-boundary" }
+serde_json = "1.0"
