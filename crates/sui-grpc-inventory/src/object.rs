@@ -77,7 +77,7 @@ impl ObjectReadSource for SuiRpcObjectReadSource {
     async fn get_service_info(&mut self) -> Result<GetServiceInfoResponse> {
         self.client
             .ledger_client()
-            .get_service_info(GetServiceInfoRequest {})
+            .get_service_info(GetServiceInfoRequest::default())
             .await
             .map(|response| response.into_inner())
             .context("Sui gRPC GetServiceInfo request failed")
@@ -151,11 +151,9 @@ impl SuiGrpcObjectReader {
         if include_contents {
             paths.push("contents".to_owned());
         }
-        let request = GetObjectRequest {
-            object_id: Some(object_id.to_owned()),
-            version: None,
-            read_mask: Some(FieldMask { paths }),
-        };
+        let mut request = GetObjectRequest::default();
+        request.object_id = Some(object_id.to_owned());
+        request.read_mask = Some(FieldMask { paths });
         let response = tokio::time::timeout(RPC_DEADLINE, self.source.get_object(request))
             .await
             .map_err(|_| anyhow!("Sui gRPC GetObject deadline exceeded"))??;
@@ -344,29 +342,27 @@ mod tests {
     }
 
     fn service_info(chain_id: Option<&str>) -> GetServiceInfoResponse {
-        GetServiceInfoResponse {
-            chain_id: chain_id.map(str::to_owned),
-            ..Default::default()
-        }
+        let mut info = GetServiceInfoResponse::default();
+        info.chain_id = chain_id.map(str::to_owned);
+        info
     }
 
     fn owner(kind: i32, address: Option<&str>, version: Option<u64>) -> Owner {
-        Owner {
-            kind: Some(kind),
-            address: address.map(str::to_owned),
-            version,
-        }
+        let mut owner = Owner::default();
+        owner.kind = Some(kind);
+        owner.address = address.map(str::to_owned);
+        owner.version = version;
+        owner
     }
 
     fn object(owner: Owner) -> Object {
-        Object {
-            object_id: Some(OBJECT_ID.to_owned()),
-            version: Some(7),
-            digest: Some("valid-digest".to_owned()),
-            owner: Some(owner),
-            object_type: Some("0x2::example::Thing".to_owned()),
-            ..Default::default()
-        }
+        let mut object = Object::default();
+        object.object_id = Some(OBJECT_ID.to_owned());
+        object.version = Some(7);
+        object.digest = Some("valid-digest".to_owned());
+        object.owner = Some(owner);
+        object.object_type = Some("0x2::example::Thing".to_owned());
+        object
     }
 
     fn reader_with_object(object: Object) -> SuiGrpcObjectReader {
