@@ -1,0 +1,39 @@
+name: Sui gRPC read-only SDK spike
+
+on:
+  push:
+    branches:
+      - security/sui-grpc-readonly-spike
+    paths:
+      - "ci/sui-grpc-readonly-spike/**"
+      - ".github/workflows/sui-grpc-readonly-spike.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "ci/sui-grpc-readonly-spike/**"
+      - ".github/workflows/sui-grpc-readonly-spike.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-grpc-readonly-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compile isolated SDK proof
+        run: cargo check --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml --all-targets
+
+      - name: Run isolated SDK proof tests
+        run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml
