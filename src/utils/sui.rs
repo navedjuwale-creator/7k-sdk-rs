@@ -271,31 +271,33 @@ impl Ptb {
 
     pub async fn get_split_coin_for_tx(
         &mut self,
+        client: &SuiClient,
         account: SuiAddress,
         amount: u64,
         splits: &[u64],
         coin_type: &str,
-        inspect_transaction: Option<bool>,
+        _inspect_transaction: Option<bool>,
     ) -> Result<Argument> {
-        let (_object_ids, coins, _balance) =
-            get_coin_object_ids_by_amount(account, amount, &coin_type).await?;
-
-        if let Some(main_coin) = coins.get(0) {
-            if coin_type == SUI_TYPE {
-                let coins_arg = if inspect_transaction.unwrap_or(false) {
-                    if coins.len() > 1 {
-                        let coins = self.coins_to_args(&coins)?;
-                        self.merge_coins(coins);
-                    }
-
-                    let coin = self.coin_to_arg(main_coin)?;
-                    self.split_coins(coin, splits)?
-                } else {
-                    self.split_coins(self.gas(), splits)?
-                };
-
-                return Ok(coins_arg);
+        // SUI input must have identical construction in simulation and final builds.
+        // GasCoin is the transaction's selected gas payment object; wallet aggregate
+        // balance cannot prove that this specific object covers input plus gas.
+        if is_sui_coin(coin_type) {
+            if amount == 0 {
+                return Err(anyhow!("Requested SUI amount must be greater than zero"));
             }
+            let split_total = splits.iter().try_fold(0u64, |total, split| {
+                total.checked_add(*split)
+            }).ok_or_else(|| anyhow!("SUI split amount overflow"))?;
+            if split_total != amount {
+                return Err(anyhow!("SUI split amounts ({split_total}) do not equal requested amount ({amount})"));
+            }
+            return self.split_coins(self.gas(), splits);
+        }
+
+        let (_object_ids, coins, _balance) =
+            get_coin_object_ids_by_amount(client, account, amount, coin_type).await?;
+
+        if let Some(main_coin) = coins.first() {
 
             if coins.len() > 1 {
                 let coins = self.coins_to_args(&coins)?;
