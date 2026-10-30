@@ -83,6 +83,7 @@ pub async fn build_tx(
     } else {
         let split_result = tx
             .get_split_coin_for_tx(
+                client,
                 SuiAddress::from_str(account_address)?,
                 quote_response.swap_amount.parse::<u64>().unwrap(),
                 &splits,
