@@ -46,5 +46,5 @@ jobs:
         run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_returns_bounded_owned_sui_coin_sample -- --ignored --exact --nocapture
 
       - name: Run bounded-adapter read-only testnet integration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/test/sui-bounded-pagination-deadline'
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/test/sui-bounded-pagination-deadline' || github.ref == 'refs/heads/test/sui-pagination-completeness-hardening')
         run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_bounded_adapter_reaches_natural_end -- --ignored --exact --nocapture
