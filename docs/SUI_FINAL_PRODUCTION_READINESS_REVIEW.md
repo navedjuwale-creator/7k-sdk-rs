@@ -113,3 +113,10 @@ The two immediate integration corrections have now been implemented on this isol
 Important remaining boundary: using `GasCoin` consistently makes the transaction shape consistent, but does not prove that the wallet's eventual gas-payment object has enough balance for the SUI swap input plus gas. The wallet-selected gas payment must be exercised in dev-inspect and final transaction assembly. The RPC failure/deadline tests are also still not mocked at this point.
 
 The implementation is pending CI verification. No gRPC migration has started; it will be a separate branch after this correction passes tests. `main` remains untouched.
+
+4. The gas estimator now propagates build and dev-inspect failures rather than returning
+   a misleading zero-fee result. Gas-cost addition and rebate subtraction are checked;
+   regression tests cover successful net-fee calculation and invalid arithmetic.
+
+The expanded CI workflow now checks formatting for the gas-estimation module and runs
+all targets/tests. This additional change is pending CI verification.
