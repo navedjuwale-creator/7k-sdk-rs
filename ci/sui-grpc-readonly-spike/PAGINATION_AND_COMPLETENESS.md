@@ -33,3 +33,20 @@ Regression tests cover:
 ## Gate before integration
 
 Before using this adapter for decisions involving real assets, add an explicitly approved integration test against a controlled test environment or a documented testnet endpoint, with deterministic fixtures where possible. Record endpoint identity, request filters, pagination observations, errors, and the reconciliation method. Do not interpret a successful compile or fixture test as proof of live-chain completeness.
+
+
+## Local gRPC pagination fixture (SDK 0.4.0)
+
+A deterministic local gRPC fixture now exercises the actual Client::list_owned_objects implementation, rather than a substitute stream helper. The fixture uses only synthetic object IDs and the all-zero owner filter.
+
+The fixture scenarios are:
+- **Two pages:** page one returns an object and a continuation token; page two returns a second object and no token. The test checks both objects and verifies the exact token sequence received by the mock server.
+- **Empty intermediate page:** page one returns no objects but includes a continuation token; page two returns an object. The test verifies that the SDK continues rather than treating the empty page as completion.
+- **Later-page RPC error:** page one returns an object and a token; page two returns UNAVAILABLE. The collector must return an error, not a successful partial collection.
+- **Repeated token:** the server repeats the same continuation token. The test applies a short timeout and records whether the stream keeps requesting pages. This is a diagnostic test for the pinned SDK behavior, not a passing completeness guarantee.
+
+### Source-level observation and risk
+
+Inspection of the pinned upstream sui-rpc 0.4.0 client/lists.rs shows that list_owned_objects updates the request page_token from each response and continues while a token is present. The implementation does not maintain a set of previously observed tokens or otherwise visibly reject a repeated token. Therefore a server that repeats a token can cause the stream to continue issuing requests. The local repeated-token fixture is intended to reproduce and bound this condition.
+
+This is a pagination-progress risk in the SDK implementation. It is not evidence that Sui testnet currently returns repeated tokens. The spike does not modify upstream SDK code; any production mitigation should be designed and tested separately, with a strict request/page budget and an explicit incomplete/error outcome.
