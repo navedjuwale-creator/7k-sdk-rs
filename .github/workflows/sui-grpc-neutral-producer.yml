@@ -1,4 +1,5 @@
 name: Sui gRPC neutral producer adapter
+# CI gate: producer formatting, isolated compile, and contract tests.
 
 on:
   push:
