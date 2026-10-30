@@ -308,7 +308,8 @@ mod tests {
     use async_trait::async_trait;
     use std::collections::VecDeque;
     use sui_rpc::proto::sui::rpc::v2::{
-        GetObjectRequest, GetObjectResponse, GetServiceInfoResponse, Object, Owner,
+        GetObjectRequest, GetObjectResponse, GetServiceInfoRequest, GetServiceInfoResponse, Object,
+        Owner,
     };
 
     const CHAIN: &str = "test-chain-genesis-digest";
