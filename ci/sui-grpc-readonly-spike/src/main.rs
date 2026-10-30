@@ -156,4 +156,197 @@ mod tests {
         );
         Ok(())
     }
+
+    use std::sync::{Arc, Mutex};
+    use tokio::sync::oneshot;
+    use tonic::{Request, Response, Status};
+    use sui_rpc::proto::sui::rpc::v2::{
+        state_service_server::{StateService, StateServiceServer},
+        ListOwnedObjectsResponse, Object,
+    };
+
+    #[derive(Clone, Copy)]
+    enum PageScenario {
+        TwoPages,
+        EmptyMiddle,
+        FailOnSecondPage,
+        RepeatToken,
+    }
+
+    #[derive(Clone)]
+    struct MockStateService {
+        scenario: PageScenario,
+        seen_tokens: Arc<Mutex<Vec<Option<Vec<u8>>>>>,
+    }
+
+    #[tonic::async_trait]
+    impl StateService for MockStateService {
+        async fn list_owned_objects(
+            &self,
+            request: Request<ListOwnedObjectsRequest>,
+        ) -> Result<Response<ListOwnedObjectsResponse>, Status> {
+            let token = request.into_inner().page_token.map(|value| value.to_vec());
+            self.seen_tokens.lock().expect("request log lock").push(token.clone());
+
+            if matches!(self.scenario, PageScenario::FailOnSecondPage)
+                && token.as_deref() == Some(b"page-2")
+            {
+                return Err(Status::unavailable("simulated second-page failure"));
+            }
+
+            let mut response = ListOwnedObjectsResponse::default();
+            match (self.scenario, token.as_deref()) {
+                (PageScenario::TwoPages, None) => {
+                    let mut object = Object::default();
+                    object.object_id = Some("fixture-object-1".to_owned());
+                    response.objects.push(object);
+                    response.next_page_token = Some(bytes::Bytes::from_static(b"page-2"));
+                }
+                (PageScenario::TwoPages, Some(b"page-2")) => {
+                    let mut object = Object::default();
+                    object.object_id = Some("fixture-object-2".to_owned());
+                    response.objects.push(object);
+                }
+                (PageScenario::EmptyMiddle, None) => {
+                    response.next_page_token = Some(bytes::Bytes::from_static(b"page-2"));
+                }
+                (PageScenario::EmptyMiddle, Some(b"page-2")) => {
+                    let mut object = Object::default();
+                    object.object_id = Some("fixture-after-empty-page".to_owned());
+                    response.objects.push(object);
+                }
+                (PageScenario::RepeatToken, None) => {
+                    let mut object = Object::default();
+                    object.object_id = Some("fixture-repeat-1".to_owned());
+                    response.objects.push(object);
+                    response.next_page_token = Some(bytes::Bytes::from_static(b"repeat"));
+                }
+                (PageScenario::RepeatToken, Some(b"repeat")) => {
+                    let mut object = Object::default();
+                    object.object_id = Some("fixture-repeat-2".to_owned());
+                    response.objects.push(object);
+                    response.next_page_token = Some(bytes::Bytes::from_static(b"repeat"));
+                }
+                _ => {}
+            }
+            Ok(Response::new(response))
+        }
+    }
+
+    async fn start_mock_server(
+        scenario: PageScenario,
+    ) -> (String, Arc<Mutex<Vec<Option<Vec<u8>>>>>, oneshot::Sender<()>) {
+        let seen_tokens = Arc::new(Mutex::new(Vec::new()));
+        let service = MockStateService {
+            scenario,
+            seen_tokens: seen_tokens.clone(),
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind local mock gRPC server");
+        let address = listener.local_addr().expect("local server address");
+        drop(listener);
+
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        tokio::spawn(async move {
+            tonic::transport::Server::builder()
+                .add_service(StateServiceServer::new(service))
+                .serve_with_shutdown(address, async {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("mock gRPC server");
+        });
+        (format!("http://{address}"), seen_tokens, shutdown_tx)
+    }
+
+    fn fixture_request() -> ListOwnedObjectsRequest {
+        ListOwnedObjectsRequest::default()
+            .with_owner(FIXTURE_OWNER)
+            .with_object_type(SUI_COIN_TYPE)
+    }
+
+    #[tokio::test]
+    async fn actual_sdk_client_follows_two_pages_and_ends_naturally() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let client = Client::new(endpoint).expect("local endpoint");
+        let items = tokio::time::timeout(
+            Duration::from_secs(3),
+            collect_stream(client.list_owned_objects(fixture_request())),
+        )
+        .await
+        .expect("pagination should finish")
+        .expect("both pages should succeed");
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].object_id.as_deref(), Some("fixture-object-1"));
+        assert_eq!(items[1].object_id.as_deref(), Some("fixture-object-2"));
+        assert_eq!(
+            *seen.lock().expect("request log lock"),
+            vec![None, Some(b"page-2".to_vec())]
+        );
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn actual_sdk_client_follows_token_after_empty_intermediate_page() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::EmptyMiddle).await;
+        let client = Client::new(endpoint).expect("local endpoint");
+        let items = tokio::time::timeout(
+            Duration::from_secs(3),
+            collect_stream(client.list_owned_objects(fixture_request())),
+        )
+        .await
+        .expect("empty intermediate page must not stall")
+        .expect("later page should succeed");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(
+            items[0].object_id.as_deref(),
+            Some("fixture-after-empty-page")
+        );
+        assert_eq!(
+            *seen.lock().expect("request log lock"),
+            vec![None, Some(b"page-2".to_vec())]
+        );
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn actual_sdk_client_fails_closed_when_second_page_errors() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::FailOnSecondPage).await;
+        let client = Client::new(endpoint).expect("local endpoint");
+        let result = tokio::time::timeout(
+            Duration::from_secs(3),
+            collect_stream(client.list_owned_objects(fixture_request())),
+        )
+        .await
+        .expect("second-page error should be returned promptly");
+
+        assert!(result.is_err(), "later-page RPC error must invalidate collection");
+        assert_eq!(
+            *seen.lock().expect("request log lock"),
+            vec![None, Some(b"page-2".to_vec())]
+        );
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn repeated_continuation_token_is_detected_as_non_terminating_behavior() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::RepeatToken).await;
+        let client = Client::new(endpoint).expect("local endpoint");
+        let result = tokio::time::timeout(
+            Duration::from_millis(250),
+            collect_stream(client.list_owned_objects(fixture_request())),
+        )
+        .await;
+
+        assert!(result.is_err(), "SDK unexpectedly terminated on repeated token");
+        assert!(
+            seen.lock().expect("request log lock").len() >= 2,
+            "mock server should observe repeated-token pagination"
+        );
+        let _ = shutdown.send(());
+    }
+
 }
