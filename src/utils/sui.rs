@@ -293,7 +293,6 @@ impl Ptb {
             get_coin_object_ids_by_amount(client, account, amount, coin_type).await?;
 
         if let Some(main_coin) = coins.first() {
-
             if coins.len() > 1 {
                 let coins = self.coins_to_args(&coins)?;
                 self.merge_coins(coins);
@@ -557,7 +556,6 @@ macro_rules! destruct {
         compile_error!("Tuple size too large!");
     };
 }
-
 
 #[cfg(test)]
 mod sui_input_tests {
