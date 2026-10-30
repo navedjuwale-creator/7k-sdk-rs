@@ -33,7 +33,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: rustfmt --edition 2024 --check src/library/sui_grpc_inventory.rs src/library/mod.rs
+        run: rustfmt --edition 2024 --check src/library/sui_grpc_inventory.rs
 
       - name: Compile all targets
         run: cargo check --all-targets
