@@ -18,6 +18,60 @@ fn order_coins(coins: &mut [Coin]) {
     coins.sort_by(|left, right| right.balance.cmp(&left.balance));
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum PageAction {
+    Complete,
+    Continue(String),
+}
+
+fn validate_page(
+    page_number: usize,
+    page_len: usize,
+    accumulated_len: usize,
+    has_next_page: bool,
+    next_cursor: Option<String>,
+    seen_cursors: &mut HashSet<String>,
+) -> Result<PageAction> {
+    if page_len > COIN_PAGE_SIZE {
+        bail!("Coin inventory page {page_number} exceeded requested page size; inventory is incomplete");
+    }
+
+    let new_total = accumulated_len
+        .checked_add(page_len)
+        .ok_or_else(|| anyhow!("Coin inventory object count overflow"))?;
+    if new_total > MAX_COIN_OBJECTS {
+        bail!("Coin inventory exceeded the {MAX_COIN_OBJECTS}-object limit; inventory is incomplete");
+    }
+
+    if !has_next_page {
+        return Ok(PageAction::Complete);
+    }
+
+    let cursor = next_cursor.ok_or_else(|| {
+        anyhow!("Coin inventory page {page_number} reports another page but supplies no cursor; inventory is incomplete")
+    })?;
+    if !seen_cursors.insert(cursor.clone()) {
+        bail!("Coin inventory repeated a pagination cursor; inventory is incomplete");
+    }
+    if page_number >= MAX_COIN_PAGES {
+        bail!("Coin inventory exceeded the {MAX_COIN_PAGES}-page limit; inventory is incomplete");
+    }
+
+    Ok(PageAction::Continue(cursor))
+}
+
+fn insert_unique_coin_ids<I>(ids: I, seen_ids: &mut HashSet<String>) -> Result<()>
+where
+    I: IntoIterator<Item = String>,
+{
+    for id in ids {
+        if !seen_ids.insert(id) {
+            bail!("Coin inventory returned a duplicate coin object ID; inventory is incomplete");
+        }
+    }
+    Ok(())
+}
+
 fn select_coin_indices(balances: &[u64], amount: u64) -> Result<(Vec<usize>, u64)> {
     if amount == 0 {
         bail!("Requested coin amount must be greater than zero");
@@ -56,6 +110,7 @@ pub async fn get_coin_object_ids_by_amount(
     let mut coin_balances: Vec<Coin> = Vec::new();
     let mut next_cursor = None;
     let mut seen_cursors = HashSet::new();
+    let mut seen_coin_ids = HashSet::new();
     let mut total_balance = 0u64;
 
     for page_number in 1..=MAX_COIN_PAGES {
@@ -77,21 +132,19 @@ pub async fn get_coin_object_ids_by_amount(
         .map_err(|_| anyhow!("Coin inventory deadline exceeded; inventory is incomplete"))?
         .with_context(|| format!("Coin inventory RPC failed on page {page_number}"))?;
 
-        if page.data.len() > COIN_PAGE_SIZE {
-            bail!(
-                "Coin inventory page {page_number} exceeded requested page size; inventory is incomplete"
-            );
-        }
+        let action = validate_page(
+            page_number,
+            page.data.len(),
+            coin_balances.len(),
+            page.has_next_page,
+            page.next_cursor.map(|cursor| cursor.to_string()),
+            &mut seen_cursors,
+        )?;
 
-        let new_total = coin_balances
-            .len()
-            .checked_add(page.data.len())
-            .ok_or_else(|| anyhow!("Coin inventory object count overflow"))?;
-        if new_total > MAX_COIN_OBJECTS {
-            bail!(
-                "Coin inventory exceeded the {MAX_COIN_OBJECTS}-object limit; inventory is incomplete"
-            );
-        }
+        insert_unique_coin_ids(
+            page.data.iter().map(|coin| coin.coin_object_id.to_string()),
+            &mut seen_coin_ids,
+        )?;
 
         for coin in &page.data {
             total_balance = total_balance
@@ -100,25 +153,9 @@ pub async fn get_coin_object_ids_by_amount(
         }
         coin_balances.extend(page.data);
 
-        if !page.has_next_page {
-            break;
-        }
-
-        let cursor = page.next_cursor.ok_or_else(|| {
-            anyhow!(
-                "Coin inventory page {page_number} reports another page but supplies no cursor; inventory is incomplete"
-            )
-        })?;
-        let cursor_key = cursor.to_string();
-        if !seen_cursors.insert(cursor_key) {
-            bail!("Coin inventory repeated a pagination cursor; inventory is incomplete");
-        }
-        next_cursor = Some(cursor);
-
-        if page_number == MAX_COIN_PAGES {
-            bail!(
-                "Coin inventory exceeded the {MAX_COIN_PAGES}-page limit; inventory is incomplete"
-            );
+        match action {
+            PageAction::Complete => break,
+            PageAction::Continue(cursor) => next_cursor = Some(cursor),
         }
     }
 
@@ -144,7 +181,69 @@ pub async fn get_coin_object_ids_by_amount(
 
 #[cfg(test)]
 mod tests {
-    use super::select_coin_indices;
+    use super::{
+        insert_unique_coin_ids, select_coin_indices, validate_page, PageAction,
+        COIN_PAGE_SIZE, MAX_COIN_OBJECTS, MAX_COIN_PAGES,
+    };
+    use std::collections::HashSet;
+
+    #[test]
+    fn empty_intermediate_page_continues_when_cursor_exists() {
+        let mut seen = HashSet::new();
+        let result = validate_page(1, 0, 0, true, Some("cursor-1".into()), &mut seen).unwrap();
+        assert_eq!(result, PageAction::Continue("cursor-1".into()));
+    }
+
+    #[test]
+    fn empty_final_page_is_a_natural_end() {
+        let mut seen = HashSet::new();
+        let result = validate_page(2, 0, 0, false, None, &mut seen).unwrap();
+        assert_eq!(result, PageAction::Complete);
+    }
+
+    #[test]
+    fn rejects_next_page_without_cursor() {
+        let mut seen = HashSet::new();
+        assert!(validate_page(1, 1, 0, true, None, &mut seen).is_err());
+    }
+
+    #[test]
+    fn rejects_repeated_cursor() {
+        let mut seen = HashSet::new();
+        validate_page(1, 1, 0, true, Some("same".into()), &mut seen).unwrap();
+        assert!(validate_page(2, 1, 1, true, Some("same".into()), &mut seen).is_err());
+    }
+
+    #[test]
+    fn rejects_page_limit_before_following_another_page() {
+        let mut seen = HashSet::new();
+        assert!(validate_page(
+            MAX_COIN_PAGES, 1, 0, true, Some("next".into()), &mut seen
+        ).is_err());
+    }
+
+    #[test]
+    fn rejects_object_limit() {
+        let mut seen = HashSet::new();
+        assert!(validate_page(
+            1, 1, MAX_COIN_OBJECTS, false, None, &mut seen
+        ).is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_page() {
+        let mut seen = HashSet::new();
+        assert!(validate_page(
+            1, COIN_PAGE_SIZE + 1, 0, false, None, &mut seen
+        ).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_coin_object_ids() {
+        let mut seen = HashSet::new();
+        insert_unique_coin_ids(vec!["coin-1".into()], &mut seen).unwrap();
+        assert!(insert_unique_coin_ids(vec!["coin-1".into()], &mut seen).is_err());
+    }
 
     #[test]
     fn rejects_zero_amount() {
