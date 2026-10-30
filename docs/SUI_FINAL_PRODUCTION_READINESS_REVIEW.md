@@ -100,3 +100,16 @@ Decision:
 ## Scope and safety
 
 This review made no transaction submissions, signatures, broadcasts, or network writes. It does not authorize merging or changing `main`.
+
+
+## Follow-up implementation update — 2026-10-30
+
+The two immediate integration corrections have now been implemented on this isolated branch:
+
+1. `get_coin_object_ids_by_amount` now receives the caller's `&SuiClient`; `Ptb::get_split_coin_for_tx` passes that same client through. The inventory function no longer constructs its own client, eliminating the localnet-vs-caller-network mismatch. Its absolute 30-second deadline begins immediately before the first inventory RPC.
+2. Native SUI input now uses `Argument::GasCoin` for both dev-inspect and ordinary transaction construction. Route split totals are checked for overflow and must equal the requested SUI amount. The old branch that used selected owned coin objects only during inspection has been removed.
+3. Added unit tests for SUI split-total match, mismatch, and overflow.
+
+Important remaining boundary: using `GasCoin` consistently makes the transaction shape consistent, but does not prove that the wallet's eventual gas-payment object has enough balance for the SUI swap input plus gas. The wallet-selected gas payment must be exercised in dev-inspect and final transaction assembly. The RPC failure/deadline tests are also still not mocked at this point.
+
+The implementation is pending CI verification. No gRPC migration has started; it will be a separate branch after this correction passes tests. `main` remains untouched.
