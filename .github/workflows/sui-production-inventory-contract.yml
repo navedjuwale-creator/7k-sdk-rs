@@ -8,6 +8,7 @@ on:
       - "src/library/get_coin_object_ids_by_amount.rs"
       - "src/utils/sui.rs"
       - "src/features/swap/build_tx.rs"
+      - "src/features/swap/estimate_gas_fee.rs"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/sui-production-inventory-contract.yml"
@@ -44,7 +45,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: rustfmt --edition 2024 --check src/library/get_coin_object_ids_by_amount.rs src/utils/sui.rs src/features/swap/build_tx.rs
+        run: rustfmt --edition 2024 --check src/library/get_coin_object_ids_by_amount.rs src/utils/sui.rs src/features/swap/build_tx.rs src/features/swap/estimate_gas_fee.rs
 
       - name: Compile all targets
         run: cargo check --all-targets
