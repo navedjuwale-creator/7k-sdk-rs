@@ -34,6 +34,7 @@ silently selecting from an incomplete set.
 - An empty page does not terminate pagination if the server says another page exists.
 - A next-page indication without a cursor is an error.
 - Repeated cursors are an error.
+- Duplicate coin object IDs across or within pages are an error.
 - RPC errors, deadline expiry, oversized pages, object-count overflow, and
   balance overflow are errors.
 - A cursor is only followed after validation.
@@ -54,6 +55,8 @@ This change does not prove snapshot consistency across pages, server indexing
 completeness, or agreement with an independent RPC provider. The pagination
 operation is read-only. No signing, broadcasting, or transaction submission is
 performed by this inventory function.
+
+Unit tests cover empty intermediate/final pages, missing and repeated cursors, page/object bounds, oversized pages, duplicate object IDs, zero requests, insufficient inventory, and checked selection arithmetic. RPC failure and deadline handling remain enforced in the production async path and are compile-checked, but are not yet exercised through a mocked RPC integration test.
 
 CI must compile the production crate and run its unit tests before this branch
 can be considered verified.
