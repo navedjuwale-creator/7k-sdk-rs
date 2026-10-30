@@ -1,7 +1,10 @@
+#[cfg(test)]
 use futures_util::{Stream, StreamExt};
+#[cfg(test)]
+use std::time::Duration;
+
 use sui_rpc::proto::sui::rpc::v2::ListOwnedObjectsRequest;
 use sui_rpc::Client;
-use std::time::Duration;
 
 const FIXTURE_OWNER: &str =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -106,38 +109,50 @@ mod tests {
 
     // Deliberately excluded from ordinary unit tests. CI invokes this ignored
     // test in a dedicated step after explicit user authorization.
+    // It intentionally samples at most 1,000 objects and never claims completeness
+    // when the cap is reached.
     #[tokio::test]
     #[ignore = "live read-only Sui testnet integration"]
-    async fn live_testnet_lists_owned_sui_coins_for_zero_address_fixture() -> Result<(), Box<dyn std::error::Error>> {
+    async fn live_testnet_returns_bounded_owned_sui_coin_sample() -> Result<(), Box<dyn std::error::Error>> {
+        const MAX_SAMPLE: usize = 1000;
+
         let client = Client::new(Client::TESTNET_FULLNODE)?;
         let request = ListOwnedObjectsRequest::default()
             .with_owner(FIXTURE_OWNER)
             .with_object_type(SUI_COIN_TYPE);
         let stream = client.list_owned_objects(request);
 
-        let count = tokio::time::timeout(Duration::from_secs(30), async {
+        let (count, completed) = tokio::time::timeout(Duration::from_secs(30), async {
             futures_util::pin_mut!(stream);
             let mut count = 0usize;
+            let mut completed = false;
 
-            while let Some(item) = stream.next().await {
-                // Propagate RPC errors; never report a partial stream as complete.
-                let _object = item?;
-                count += 1;
-                if count > 1000 {
-                    return Err("fixture result exceeded the 1000-object safety cap".into());
+            while count < MAX_SAMPLE {
+                match stream.next().await {
+                    Some(item) => {
+                        // Any RPC error fails the probe; partial results are never
+                        // represented as a complete inventory.
+                        let _object = item?;
+                        count += 1;
+                    }
+                    None => {
+                        completed = true;
+                        break;
+                    }
                 }
             }
 
-            Ok::<usize, Box<dyn std::error::Error>>(count)
+            Ok::<(usize, bool), Box<dyn std::error::Error>>((count, completed))
         })
         .await??;
 
         println!(
-            "LIVE_READ_ONLY_TESTNET_OK endpoint={} owner={} object_type={} objects={}",
+            "LIVE_READ_ONLY_TESTNET_OK endpoint={} owner={} object_type={} sampled_objects={} completeness={}",
             Client::TESTNET_FULLNODE,
             FIXTURE_OWNER,
             SUI_COIN_TYPE,
-            count
+            count,
+            if completed { "complete_stream" } else { "bounded_sample_not_complete" }
         );
         Ok(())
     }
