@@ -166,9 +166,8 @@ mod tests {
 
     #[test]
     fn producer_json_matches_shared_schema_v1_fixture() {
-        const FIXTURE: &str = include_str!(
-            "../../sui-neutral-object-boundary/tests/fixtures/neutral-object-v1.json"
-        );
+        const FIXTURE: &str =
+            include_str!("../../sui-neutral-object-boundary/tests/fixtures/neutral-object-v1.json");
         let source = record(SuiOwner::Address {
             address: ADDRESS.to_owned(),
         });
