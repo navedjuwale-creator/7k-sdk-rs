@@ -1,0 +1,35 @@
+# Owned-object pagination and completeness notes
+
+## Scope
+
+This note records the pagination contract verified for the isolated `sui-rpc = 0.4.0` read-only spike. It is not evidence of a successful live RPC request and does not authorize production integration.
+
+## SDK behavior documented by upstream
+
+The `Client::list_owned_objects` API returns a stream of `Result<Object, Status>` items. The SDK documentation states that it automatically follows `page_token` values from responses to fetch subsequent pages. An RPC failure is yielded as an error item.
+
+References:
+- https://docs.rs/sui-rpc/0.4.0/sui_rpc/client/struct.Client.html
+- https://github.com/MystenLabs/sui-apis/blob/main/proto/sui/rpc/v2/state_service.proto
+
+The request's owner is required. The optional `object_type` narrows the results. The protocol defines `next_page_token` as the signal that another page exists; an omitted token means there are no subsequent pages. When manually paginating, all other request parameters must match those used for the token.
+
+## Completeness rule in this spike
+
+The test-only `collect_stream` helper consumes items until the stream ends. It returns the collected vector only when the stream completes without an error. If any item is an error, it returns that error instead of exposing the accumulated prefix as a successful result.
+
+Regression tests cover:
+- collecting multiple successful items;
+- treating a normally ended empty stream as an empty result;
+- propagating an error after earlier successful items, rather than returning partial data.
+
+## Important limitations
+
+- The tests use local fixture streams; they do not prove the upstream server's pagination implementation works correctly in a live environment.
+- The SDK's documented automatic pagination behavior is relied upon, not independently reimplemented by this spike.
+- A clean stream end is treated as completion by the client abstraction. This test suite does not independently audit server-side indexing freshness, snapshot consistency, or omissions in the underlying data source.
+- No live network request, signing, transaction construction, broadcast, or production integration is performed by this proof.
+
+## Gate before integration
+
+Before using this adapter for decisions involving real assets, add an explicitly approved integration test against a controlled test environment or a documented testnet endpoint, with deterministic fixtures where possible. Record endpoint identity, request filters, pagination observations, errors, and the reconciliation method. Do not interpret a successful compile or fixture test as proof of live-chain completeness.
