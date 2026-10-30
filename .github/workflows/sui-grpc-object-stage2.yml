@@ -35,5 +35,8 @@ jobs:
       - name: Compile all targets
         run: cargo check --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
 
-      - name: Run all tests
+      - name: Run all unit tests
         run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
+
+      - name: Probe live Sui Testnet gRPC identity (read-only)
+        run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml live_testnet_probe_reports_chain_identity -- --ignored --nocapture
