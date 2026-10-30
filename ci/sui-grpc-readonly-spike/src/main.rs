@@ -1,15 +1,20 @@
 #[cfg(test)]
 use futures_util::{Stream, StreamExt};
+#[cfg(test)]
 use std::time::Duration;
 
 use sui_rpc::proto::sui::rpc::v2::ListOwnedObjectsRequest;
+#[cfg(test)]
 use sui_rpc::proto::sui::rpc::v2::{
     state_service_client::StateServiceClient, Object,
 };
 use sui_rpc::Client;
+#[cfg(test)]
 use std::collections::HashSet;
+#[cfg(test)]
 use tonic::transport::Channel;
 
+#[cfg(test)]
 #[derive(Debug)]
 enum PaginationError {
     Rpc(tonic::Status),
@@ -18,6 +23,7 @@ enum PaginationError {
     DeadlineExceeded,
 }
 
+#[cfg(test)]
 impl std::fmt::Display for PaginationError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -33,8 +39,10 @@ impl std::fmt::Display for PaginationError {
     }
 }
 
+#[cfg(test)]
 impl std::error::Error for PaginationError {}
 
+#[cfg(test)]
 async fn collect_owned_objects_bounded<T>(
     client: &mut StateServiceClient<T>,
     mut request: ListOwnedObjectsRequest,
