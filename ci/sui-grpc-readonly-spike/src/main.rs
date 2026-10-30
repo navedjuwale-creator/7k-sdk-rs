@@ -357,9 +357,13 @@ mod tests {
     }
 
     fn fixture_request() -> ListOwnedObjectsRequest {
+        // The RPC defaults to 50 objects per page. Request the documented
+        // maximum (1,000) so the bounded live probe tests pagination rather
+        // than exhausting its page budget on unnecessarily small pages.
         ListOwnedObjectsRequest::default()
             .with_owner(FIXTURE_OWNER)
             .with_object_type(SUI_COIN_TYPE)
+            .with_page_size(1000)
     }
 
     #[tokio::test]
