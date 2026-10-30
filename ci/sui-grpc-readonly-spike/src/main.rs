@@ -85,6 +85,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn treats_an_empty_stream_as_a_complete_empty_result() {
+        let result = collect_stream(stream::empty::<Result<u8, &'static str>>()).await;
+
+        assert_eq!(result, Ok(Vec::<u8>::new()));
+    }
+
+    #[tokio::test]
     async fn propagates_stream_error_instead_of_returning_partial_results() {
         let result = collect_stream(stream::iter([
             Ok::<_, &'static str>(10),
