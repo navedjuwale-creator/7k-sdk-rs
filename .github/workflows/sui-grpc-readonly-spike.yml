@@ -41,3 +41,11 @@ jobs:
       - name: Run explicitly authorized read-only testnet integration
         if: github.event_name == 'push' && github.ref == 'refs/heads/security/sui-grpc-readonly-spike'
         run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_returns_bounded_owned_sui_coin_sample -- --ignored --exact --nocapture
+
+      - name: Run bounded direct-adapter testnet integration
+        if: github.event_name == 'push' && github.ref == 'refs/heads/security/sui-grpc-readonly-spike'
+        run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_bounded_adapter_enforces_page_budget -- --ignored --exact --nocapture
+
+      - name: Verify direct-adapter page-cap outcome on testnet
+        if: github.event_name == 'push' && github.ref == 'refs/heads/security/sui-grpc-readonly-spike'
+        run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_bounded_adapter_reports_page_cap_as_incomplete -- --ignored --exact --nocapture
