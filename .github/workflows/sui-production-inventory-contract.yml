@@ -1,0 +1,53 @@
+name: Sui production inventory contract
+
+on:
+  push:
+    branches:
+      - fix/sui-production-inventory-contract
+    paths:
+      - "src/library/get_coin_object_ids_by_amount.rs"
+      - "src/utils/sui.rs"
+      - "src/features/swap/build_tx.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/sui-production-inventory-contract.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/library/get_coin_object_ids_by_amount.rs"
+      - "src/utils/sui.rs"
+      - "src/features/swap/build_tx.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/sui-production-inventory-contract.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-production-inventory-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Compile all targets
+        run: cargo check --all-targets
+
+      - name: Run all tests
+        run: cargo test --all-targets
