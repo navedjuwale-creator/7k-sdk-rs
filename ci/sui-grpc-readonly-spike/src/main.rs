@@ -18,11 +18,18 @@ enum PaginationError {
     PageLimitExceeded { max_pages: usize },
 }
 
-async fn collect_owned_objects_bounded(
-    client: &mut StateServiceClient<Channel>,
+async fn collect_owned_objects_bounded<T>(
+    client: &mut StateServiceClient<T>,
     mut request: ListOwnedObjectsRequest,
     max_pages: usize,
-) -> Result<Vec<Object>, PaginationError> {
+) -> Result<Vec<Object>, PaginationError>
+where
+    T: tonic::client::GrpcService<tonic::body::Body>,
+    T::Error: Into<tonic::codegen::StdError>,
+    T::ResponseBody: tonic::codegen::Body<Data = tonic::codegen::Bytes> + Send + 'static,
+    <T::ResponseBody as tonic::codegen::Body>::Error:
+        Into<tonic::codegen::StdError> + Send,
+{
     if max_pages == 0 {
         return Err(PaginationError::PageLimitExceeded { max_pages });
     }
@@ -157,6 +164,35 @@ mod tests {
         .await;
 
         assert_eq!(result, Err("simulated RPC failure"));
+    }
+
+    // Explicitly ignored: the workflow invokes this test only on the dedicated
+    // test branch. Uses the SDK-configured transport and the bounded direct adapter.
+    #[tokio::test]
+    #[ignore = "live read-only Sui testnet bounded pagination integration"]
+    async fn live_testnet_bounded_adapter_reaches_natural_end() -> Result<(), Box<dyn std::error::Error>> {
+        const MAX_PAGES: usize = 8;
+        let mut sdk_client = Client::new(Client::TESTNET_FULLNODE)?;
+        let mut state_client = sdk_client.state_client();
+        let request = fixture_request();
+
+        let objects = tokio::time::timeout(
+            Duration::from_secs(30),
+            collect_owned_objects_bounded(&mut state_client, request, MAX_PAGES),
+        )
+        .await
+        .map_err(|_| "bounded testnet pagination timed out")?
+        .map_err(|error| format!("bounded testnet pagination incomplete: {error:?}"))?;
+
+        println!(
+            "LIVE_BOUNDED_ADAPTER_OK endpoint={} owner={} object_type={} objects={} max_pages={} completeness=natural_end",
+            Client::TESTNET_FULLNODE,
+            FIXTURE_OWNER,
+            SUI_COIN_TYPE,
+            objects.len(),
+            MAX_PAGES
+        );
+        Ok(())
     }
 
     // Deliberately excluded from ordinary unit tests. CI invokes this ignored
