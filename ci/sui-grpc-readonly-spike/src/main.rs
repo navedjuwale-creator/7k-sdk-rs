@@ -6,6 +6,7 @@ const FIXTURE_OWNER: &str =
     "0x0000000000000000000000000000000000000000000000000000000000000000";
 const SUI_COIN_TYPE: &str = "0x2::coin::Coin<0x2::sui::SUI>";
 
+#[cfg(test)]
 async fn collect_stream<S, T, E>(stream: S) -> Result<Vec<T>, E>
 where
     S: Stream<Item = Result<T, E>>,
