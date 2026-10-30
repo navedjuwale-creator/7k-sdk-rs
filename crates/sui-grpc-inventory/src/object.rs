@@ -463,7 +463,10 @@ mod tests {
             .into_inner();
         let chain = info.chain.as_deref().unwrap_or("");
         let chain_id = info.chain_id.as_deref().unwrap_or("");
-        assert_eq!(chain, "testnet", "endpoint did not identify itself as Sui Testnet");
+        assert_eq!(
+            chain, "testnet",
+            "endpoint did not identify itself as Sui Testnet"
+        );
         assert!(!chain_id.is_empty(), "GetServiceInfo omitted chain_id");
         eprintln!("SUI_TESTNET_CHAIN_ID={chain_id}");
     }
