@@ -365,6 +365,108 @@ mod tests {
         object
     }
 
+
+    struct RecordingSource {
+        response: Option<GetObjectResponse>,
+        captured: std::sync::Arc<std::sync::Mutex<Option<GetObjectRequest>>>,
+    }
+
+    #[async_trait]
+    impl ObjectReadSource for RecordingSource {
+        async fn get_service_info(&mut self) -> Result<GetServiceInfoResponse> {
+            Ok(service_info(Some(CHAIN)))
+        }
+
+        async fn get_object(&mut self, request: GetObjectRequest) -> Result<GetObjectResponse> {
+            *self.captured.lock().unwrap() = Some(request);
+            self.response
+                .take()
+                .ok_or_else(|| anyhow!("unexpected second object request"))
+        }
+    }
+
+    #[tokio::test]
+    async fn public_get_object_request_uses_exact_required_field_mask() {
+        let mut response = GetObjectResponse::default();
+        response.object = Some(object(owner(4, None, None)));
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let source = RecordingSource {
+            response: Some(response),
+            captured: captured.clone(),
+        };
+        let mut reader = SuiGrpcObjectReader {
+            source: Box::new(source),
+            network: network(CHAIN),
+        };
+
+        let record = reader.get_object(OBJECT_ID).await.unwrap();
+        assert_eq!(record.object_id, OBJECT_ID);
+
+        let request = captured.lock().unwrap().clone().unwrap();
+        assert_eq!(request.object_id.as_deref(), Some(OBJECT_ID));
+        let paths = request.read_mask.unwrap().paths;
+        assert_eq!(
+            paths,
+            vec!["object_id", "version", "digest", "owner", "object_type"]
+        );
+        assert!(!paths.iter().any(|path| path == "contents"));
+    }
+
+    #[tokio::test]
+    async fn public_get_object_with_contents_adds_only_contents_to_mask() {
+        let mut response = GetObjectResponse::default();
+        let mut value = sui_rpc::proto::sui::rpc::v2::Bcs::default();
+        value.value = Some(vec![1, 2, 3].into());
+        let mut object = object(owner(4, None, None));
+        object.contents = Some(value);
+        response.object = Some(object);
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let source = RecordingSource {
+            response: Some(response),
+            captured: captured.clone(),
+        };
+        let mut reader = SuiGrpcObjectReader {
+            source: Box::new(source),
+            network: network(CHAIN),
+        };
+
+        let record = reader.get_object_with_contents(OBJECT_ID, true).await.unwrap();
+        assert_eq!(record.contents_bcs, Some(vec![1, 2, 3]));
+
+        let request = captured.lock().unwrap().clone().unwrap();
+        let paths = request.read_mask.unwrap().paths;
+        assert_eq!(
+            paths,
+            vec!["object_id", "version", "digest", "owner", "object_type", "contents"]
+        );
+    }
+
+    /// Live smoke test. Run explicitly with SUI_TESTNET_EXPECTED_CHAIN_ID set to
+    /// the independently pinned full Base58 genesis checkpoint digest.
+    #[tokio::test]
+    #[ignore = "requires public Sui Testnet gRPC connectivity and pinned chain ID"]
+    async fn live_testnet_chain_identity_and_read_only_object_lookup() {
+        let endpoint = "https://fullnode.testnet.sui.io:443";
+        let expected = std::env::var("SUI_TESTNET_EXPECTED_CHAIN_ID")
+            .expect("SUI_TESTNET_EXPECTED_CHAIN_ID must be explicitly configured");
+        let mut reader = SuiGrpcObjectReader::connect(
+            SuiGrpcNetwork::new(endpoint, expected.clone()).unwrap()
+        )
+        .await
+        .unwrap();
+        assert_eq!(reader.chain_id(), expected);
+        let record = reader.get_object(
+            "0x0000000000000000000000000000000000000000000000000000000000000005"
+        ).await.unwrap();
+        assert_eq!(record.chain_id, expected);
+        assert_eq!(record.object_id.to_ascii_lowercase(),
+            "0x0000000000000000000000000000000000000000000000000000000000000005");
+        eprintln!(
+            "LIVE_SUI_TESTNET_OK chain_id={} object_version={} object_type={}",
+            record.chain_id, record.version, record.object_type
+        );
+    }
+
     fn reader_with_object(object: Object) -> SuiGrpcObjectReader {
         let mut response = GetObjectResponse::default();
         response.object = Some(object);
