@@ -1,7 +1,8 @@
 # Sui production coin inventory contract
 
 This contract applies to `get_coin_object_ids_by_amount` and the transaction-building
-path that consumes its selected coin objects.
+path that consumes its selected coin objects. The caller must pass the same `SuiClient`
+used for transaction construction; the inventory collector must never create its own client.
 
 ## Success conditions
 
@@ -60,3 +61,9 @@ Unit tests cover empty intermediate/final pages, missing and repeated cursors, p
 
 CI must compile the production crate and run its unit tests before this branch
 can be considered verified.
+
+
+Additional regression tests verify that SUI route split amounts equal the requested amount
+and reject mismatch and arithmetic overflow. These tests do not establish that an eventual
+wallet-selected gas payment object has sufficient balance; that must be verified by the
+same transaction simulation and the wallet's final gas-payment selection.
