@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn rejects_selection_overflow() {
-        assert!(select_coin_indices(&[u64::MAX, 1], u64::MAX).is_err());
+        assert!(select_coin_indices(&[u64::MAX - 1, 2], u64::MAX).is_err());
     }
 
     #[test]
