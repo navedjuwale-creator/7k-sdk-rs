@@ -1,12 +1,13 @@
 name: Sui neutral object consumer
-# Isolated consumer-side parsing and malformed-input validation.
+# Isolated consumer-side parsing and producer-to-consumer interoperability validation.
 on:
   push:
     branches:
-      - test/sui-neutral-object-consumer
+      - test/sui-producer-consumer-interop
     paths:
       - "crates/sui-neutral-object-consumer/**"
       - "crates/sui-neutral-object-boundary/**"
+      - "crates/sui-grpc-inventory/**"
       - ".github/workflows/sui-neutral-object-consumer.yml"
   workflow_dispatch:
 
@@ -28,7 +29,7 @@ jobs:
           components: rustfmt
       - name: Format consumer source
         run: rustfmt --edition 2024 --check crates/sui-neutral-object-consumer/src/lib.rs
-      - name: Compile consumer dependency domain independently
+      - name: Compile producer and consumer dependency domains
         run: cargo check --manifest-path crates/sui-neutral-object-consumer/Cargo.toml --all-targets
-      - name: Run consumer boundary tests
+      - name: Run producer-to-consumer interoperability tests
         run: cargo test --manifest-path crates/sui-neutral-object-consumer/Cargo.toml --all-targets
