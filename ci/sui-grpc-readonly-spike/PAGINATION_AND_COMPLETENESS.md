@@ -72,3 +72,9 @@ Local mock-gRPC regression tests cover normal two-page completion, repeated-toke
 The first live run compiled successfully and all 15 ordinary tests passed. The bounded adapter integration then failed closed with `PageLimitExceeded { max_pages: 8 }`. This is evidence that the request still had a continuation token after eight pages; it is not evidence of an RPC error or natural completion. The initial request omitted `page_size`, so the protocol default of 50 entries per page applied. The probe now explicitly requests the documented maximum of 1,000 entries per page while retaining the 8-page ceiling and 30-second timeout. The next run must establish whether the larger page size reaches a natural end. If the budget is still exhausted, the result remains incomplete and must be investigated rather than relabeled as complete.
 
 Protocol page-size contract: https://github.com/MystenLabs/sui-apis/blob/main/proto/sui/rpc/v2/state_service.proto
+
+## Total deadline in the bounded adapter
+
+The bounded direct-pagination adapter now accepts a single maximum duration and computes one absolute deadline before the first page request. Every page RPC is awaited with that same deadline, so slow responses across multiple pages cannot each reset the timeout. If the deadline expires, the adapter returns `DeadlineExceeded` and does not return the accumulated prefix as a complete result.
+
+A local mock-gRPC regression test deliberately delays its first response beyond a 50 ms adapter deadline. The test asserts the explicit deadline error and verifies the call returns promptly. The live testnet probe uses a 30-second total adapter deadline in addition to its 8-page ceiling.
