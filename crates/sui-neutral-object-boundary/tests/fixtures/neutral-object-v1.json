@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "chain_id": "pinned-test-chain-genesis-digest",
+  "object_id": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "version": 42,
+  "digest": "Base58DigestPreservedExactly",
+  "object_type": "0x2::example::Thing",
+  "owner": {
+    "kind": "address",
+    "address": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}
