@@ -78,3 +78,18 @@ Protocol page-size contract: https://github.com/MystenLabs/sui-apis/blob/main/pr
 The bounded direct-pagination adapter now accepts a single maximum duration and computes one absolute deadline before the first page request. Every page RPC is awaited with that same deadline, so slow responses across multiple pages cannot each reset the timeout. If the deadline expires, the adapter returns `DeadlineExceeded` and does not return the accumulated prefix as a complete result.
 
 A local mock-gRPC regression test deliberately delays its first response beyond a 50 ms adapter deadline. The test asserts the explicit deadline error and verifies the call returns promptly. The live testnet probe uses a 30-second total adapter deadline in addition to its 8-page ceiling.
+
+## Completeness hardening: explicit object bounds
+
+The direct adapter now takes three independent bounds: maximum pages, maximum requested page size, and maximum total objects. The page-size limit must be between 1 and 1,000; the adapter overwrites the request page size with that limit so caller-provided request values cannot silently exceed the configured bound. It also checks the actual number of objects returned in each response and rejects an oversized response. Before appending a page, it checks the cumulative object count with saturating arithmetic. Any exceeded bound returns a distinct error and never returns the accumulated prefix as a successful complete collection.
+
+The live testnet probe uses an 8-page ceiling, a 1,000-object page-size ceiling, an 8,000-object total ceiling, and the existing 30-second absolute deadline. These are independent fail-closed bounds; reaching any limit before a response with no continuation token means the inventory is incomplete.
+
+Additional local gRPC regression coverage:
+- empty intermediate page followed by a populated page in the direct adapter;
+- zero page budget rejected before any RPC request;
+- total-object limit exceeded on a later page, returning an error rather than a partial collection;
+- invalid page-size limit rejected before any RPC request;
+- server response containing more objects than the requested per-page limit, rejected before collection growth.
+
+The upstream implementation observation is pinned to the published sui-rpc 0.4.0 source rather than a moving branch: https://docs.rs/crate/sui-rpc/0.4.0/source/src/client/lists.rs . The dependency remains exactly pinned as sui-rpc = "=0.4.0" in the isolated proof. This source reference documents the version under test; it is not a claim that the upstream SDK has been patched.
