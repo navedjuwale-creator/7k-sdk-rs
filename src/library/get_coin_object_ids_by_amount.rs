@@ -132,6 +132,7 @@ pub async fn get_coin_object_ids_by_amount(
         .map_err(|_| anyhow!("Coin inventory deadline exceeded; inventory is incomplete"))?
         .with_context(|| format!("Coin inventory RPC failed on page {page_number}"))?;
 
+        let rpc_next_cursor = page.next_cursor.clone();
         let action = validate_page(
             page_number,
             page.data.len(),
@@ -155,7 +156,7 @@ pub async fn get_coin_object_ids_by_amount(
 
         match action {
             PageAction::Complete => break,
-            PageAction::Continue(cursor) => next_cursor = Some(cursor),
+            PageAction::Continue(_) => next_cursor = rpc_next_cursor,
         }
     }
 
