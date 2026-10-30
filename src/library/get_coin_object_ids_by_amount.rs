@@ -3,9 +3,9 @@ use std::{collections::HashSet, time::Duration};
 use sui_sdk::{
     rpc_types::Coin,
     types::base_types::{ObjectID, SuiAddress},
+    SuiClient,
 };
 
-use crate::client::get_sui_client;
 
 // Production inventory bounds. Reaching any bound before the server reports a
 // natural end is an error: callers must never receive a successful partial inventory.
@@ -101,6 +101,7 @@ fn select_coin_indices(balances: &[u64], amount: u64) -> Result<(Vec<usize>, u64
 }
 
 pub async fn get_coin_object_ids_by_amount(
+    client: &SuiClient,
     address: SuiAddress,
     amount: u64,
     coin_type: &str,
@@ -109,7 +110,8 @@ pub async fn get_coin_object_ids_by_amount(
         bail!("Requested coin amount must be greater than zero");
     }
 
-    let client = get_sui_client().await.context("Create Sui RPC client")?;
+    // The caller supplies the same network client used to build the transaction.
+    // Start one absolute deadline before the first inventory RPC.
     let deadline = tokio::time::Instant::now() + COIN_INVENTORY_DEADLINE;
     let mut coin_balances: Vec<Coin> = Vec::new();
     let mut next_cursor = None;
