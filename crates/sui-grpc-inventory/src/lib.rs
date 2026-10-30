@@ -1,3 +1,4 @@
+pub mod neutral;
 pub mod object;
 pub use object::{SuiGrpcNetwork, SuiGrpcObjectReader, SuiObjectRecord, SuiOwner};
 
