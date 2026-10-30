@@ -152,18 +152,25 @@ async fn collect_coin_inventory<S: CoinPageSource>(
             page_size: Some(limits.page_size),
             page_token: page_token.take(),
             read_mask: Some(FieldMask {
-                paths: COIN_OBJECT_READ_MASK.iter().map(|path| (*path).to_owned()).collect(),
+                paths: COIN_OBJECT_READ_MASK
+                    .iter()
+                    .map(|path| (*path).to_owned())
+                    .collect(),
             }),
             object_type: Some(expected_type.clone()),
         };
 
         let response = tokio::time::timeout(remaining, source.list_owned_objects(request))
             .await
-            .map_err(|_| anyhow!("Sui gRPC coin inventory deadline exceeded; inventory is incomplete"))?
+            .map_err(|_| {
+                anyhow!("Sui gRPC coin inventory deadline exceeded; inventory is incomplete")
+            })?
             .with_context(|| format!("Sui gRPC coin inventory failed on page {page_number}"))?;
 
         if response.objects.len() > limits.page_size as usize {
-            bail!("Sui gRPC page {page_number} exceeded its requested page size; inventory is incomplete");
+            bail!(
+                "Sui gRPC page {page_number} exceeded its requested page size; inventory is incomplete"
+            );
         }
 
         let new_total = coins
@@ -171,13 +178,18 @@ async fn collect_coin_inventory<S: CoinPageSource>(
             .checked_add(response.objects.len())
             .ok_or_else(|| anyhow!("Sui gRPC coin object count overflow"))?;
         if new_total > limits.max_objects {
-            bail!("Sui gRPC coin inventory exceeded the {}-object limit; inventory is incomplete", limits.max_objects);
+            bail!(
+                "Sui gRPC coin inventory exceeded the {}-object limit; inventory is incomplete",
+                limits.max_objects
+            );
         }
 
         for object in response.objects {
             let coin = decode_coin_object(object, owner, &expected_type)?;
             if !seen_ids.insert(coin.object_id.clone()) {
-                bail!("Sui gRPC coin inventory returned a duplicate object ID; inventory is incomplete");
+                bail!(
+                    "Sui gRPC coin inventory returned a duplicate object ID; inventory is incomplete"
+                );
             }
             total_balance = total_balance
                 .checked_add(coin.balance)
@@ -195,7 +207,10 @@ async fn collect_coin_inventory<S: CoinPageSource>(
                     bail!("Sui gRPC repeated a continuation token; inventory is incomplete");
                 }
                 if page_number >= limits.max_pages {
-                    bail!("Sui gRPC coin inventory exceeded the {}-page limit; inventory is incomplete", limits.max_pages);
+                    bail!(
+                        "Sui gRPC coin inventory exceeded the {}-page limit; inventory is incomplete",
+                        limits.max_pages
+                    );
                 }
                 page_token = Some(token);
             }
@@ -219,33 +234,52 @@ async fn collect_coin_inventory<S: CoinPageSource>(
         }
     }
 
-    bail!("Insufficient balance: complete gRPC inventory contains {total_balance}, requested {amount}");
+    bail!(
+        "Insufficient balance: complete gRPC inventory contains {total_balance}, requested {amount}"
+    );
 }
 
 fn decode_coin_object(object: Object, owner: &str, expected_type: &str) -> Result<GrpcCoinObject> {
-    let object_id = object.object_id.context("Sui gRPC coin object is missing object_id")?;
+    let object_id = object
+        .object_id
+        .context("Sui gRPC coin object is missing object_id")?;
     validate_object_id(&object_id)?;
-    let version = object.version.context("Sui gRPC coin object is missing version")?;
+    let version = object
+        .version
+        .context("Sui gRPC coin object is missing version")?;
     if version == 0 {
         bail!("Sui gRPC coin object {object_id} has invalid version zero");
     }
-    let digest = object.digest.context("Sui gRPC coin object {object_id} is missing digest")?;
+    let digest = object
+        .digest
+        .context("Sui gRPC coin object {object_id} is missing digest")?;
     if digest.is_empty() {
         bail!("Sui gRPC coin object {object_id} has an empty digest");
     }
-    let object_type = object.object_type.context("Sui gRPC coin object {object_id} is missing object_type")?;
+    let object_type = object
+        .object_type
+        .context("Sui gRPC coin object {object_id} is missing object_type")?;
     if object_type != expected_type {
-        bail!("Sui gRPC coin object {object_id} has unexpected type {object_type}; expected {expected_type}");
+        bail!(
+            "Sui gRPC coin object {object_id} has unexpected type {object_type}; expected {expected_type}"
+        );
     }
-    let object_owner = object.owner.context("Sui gRPC coin object {object_id} is missing owner")?;
+    let object_owner = object
+        .owner
+        .context("Sui gRPC coin object {object_id} is missing owner")?;
     if object_owner.kind != Some(1) || object_owner.address.as_deref() != Some(owner) {
         bail!("Sui gRPC coin object {object_id} is not address-owned by the requested owner");
     }
 
-    let contents = object.contents.context("Sui gRPC coin object {object_id} is missing BCS contents")?;
-    let bytes = contents.value.context("Sui gRPC coin object {object_id} has empty BCS contents")?;
-    let (_, balance): ([u8; 32], u64) = bcs::from_bytes(&bytes)
-        .with_context(|| format!("Sui gRPC coin object {object_id} has malformed Coin<T> BCS contents"))?;
+    let contents = object
+        .contents
+        .context("Sui gRPC coin object {object_id} is missing BCS contents")?;
+    let bytes = contents
+        .value
+        .context("Sui gRPC coin object {object_id} has empty BCS contents")?;
+    let (_, balance): ([u8; 32], u64) = bcs::from_bytes(&bytes).with_context(|| {
+        format!("Sui gRPC coin object {object_id} has malformed Coin<T> BCS contents")
+    })?;
 
     Ok(GrpcCoinObject {
         object_id,
@@ -272,7 +306,11 @@ fn validate_object_id(object_id: &str) -> Result<()> {
 }
 
 fn validate_coin_type(coin_type: &str) -> Result<()> {
-    if coin_type.is_empty() || !coin_type.contains("::") || coin_type.contains('<') || coin_type.contains('>') {
+    if coin_type.is_empty()
+        || !coin_type.contains("::")
+        || coin_type.contains('<')
+        || coin_type.contains('>')
+    {
         bail!("Coin type must be a fully qualified, non-generic Move type");
     }
     Ok(())
@@ -280,9 +318,7 @@ fn validate_coin_type(coin_type: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CoinPageSource, GrpcCoinInventory, InventoryLimits, collect_coin_inventory,
-    };
+    use super::{CoinPageSource, GrpcCoinInventory, InventoryLimits, collect_coin_inventory};
     use anyhow::{Result, anyhow};
     use async_trait::async_trait;
     use std::{collections::VecDeque, time::Duration};
@@ -308,9 +344,18 @@ mod tests {
             assert_eq!(request.owner.as_deref(), Some(OWNER));
             assert_eq!(request.object_type.as_deref(), Some(EXPECTED_TYPE));
             assert_eq!(request.page_size, Some(10));
-            assert!(request.read_mask.as_ref().unwrap().paths.contains(&"contents".to_owned()));
+            assert!(
+                request
+                    .read_mask
+                    .as_ref()
+                    .unwrap()
+                    .paths
+                    .contains(&"contents".to_owned())
+            );
             tokio::time::sleep(self.delay).await;
-            self.pages.pop_front().unwrap_or_else(|| Err(anyhow!("mock page queue exhausted")))
+            self.pages
+                .pop_front()
+                .unwrap_or_else(|| Err(anyhow!("mock page queue exhausted")))
         }
     }
 
@@ -320,9 +365,16 @@ mod tests {
             object_id: Some(format!("0x{}", hex_id(id_byte))),
             version: Some(1),
             digest: Some("mock-digest".to_owned()),
-            owner: Some(Owner { kind: Some(1), address: Some(OWNER.to_owned()), version: None }),
+            owner: Some(Owner {
+                kind: Some(1),
+                address: Some(OWNER.to_owned()),
+                version: None,
+            }),
             object_type: Some(EXPECTED_TYPE.to_owned()),
-            contents: Some(Bcs { name: None, value: Some(contents.into()) }),
+            contents: Some(Bcs {
+                name: None,
+                value: Some(contents.into()),
+            }),
             ..Default::default()
         }
     }
@@ -348,7 +400,10 @@ mod tests {
     }
 
     fn source(pages: Vec<Result<ListOwnedObjectsResponse>>) -> MockGrpcSource {
-        MockGrpcSource { pages: pages.into(), delay: Duration::ZERO }
+        MockGrpcSource {
+            pages: pages.into(),
+            delay: Duration::ZERO,
+        }
     }
 
     #[tokio::test]
@@ -357,7 +412,9 @@ mod tests {
             Ok(page(vec![object(1, 4)], Some(b"next"))),
             Ok(page(vec![object(2, 9)], None)),
         ]);
-        let result = collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 8, limits()).await.unwrap();
+        let result = collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 8, limits())
+            .await
+            .unwrap();
         assert_eq!(result.selected_balance, 9);
         assert_eq!(result.total_balance, 13);
         assert_eq!(result.selected_coins.len(), 1);
@@ -369,7 +426,9 @@ mod tests {
             Ok(page(vec![], Some(b"next"))),
             Ok(page(vec![object(3, 12)], None)),
         ]);
-        let result = collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 10, limits()).await.unwrap();
+        let result = collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 10, limits())
+            .await
+            .unwrap();
         assert_eq!(result.selected_balance, 12);
     }
 
@@ -379,7 +438,11 @@ mod tests {
             Ok(page(vec![object(4, 100)], Some(b"next"))),
             Err(anyhow!("mock transport failure")),
         ]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -388,15 +451,26 @@ mod tests {
         mock.delay = Duration::from_millis(30);
         let mut short = limits();
         short.deadline = Duration::from_millis(1);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, short).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, short)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn malformed_bcs_fails_closed() {
         let mut malformed = object(6, 1);
-        malformed.contents = Some(Bcs { name: None, value: Some(b"bad".to_vec().into()) });
+        malformed.contents = Some(Bcs {
+            name: None,
+            value: Some(b"bad".to_vec().into()),
+        });
         let mut mock = source(vec![Ok(page(vec![malformed], None))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -404,7 +478,11 @@ mod tests {
         let mut missing = object(7, 1);
         missing.contents = None;
         let mut mock = source(vec![Ok(page(vec![missing], None))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -412,15 +490,24 @@ mod tests {
         let mut wrong = object(8, 1);
         wrong.object_type = Some("0x2::coin::Coin<0x2::other::OTHER>".to_owned());
         let mut mock = source(vec![Ok(page(vec![wrong], None))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn wrong_owner_fails_closed() {
         let mut wrong = object(9, 1);
-        wrong.owner.as_mut().unwrap().address = Some("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned());
+        wrong.owner.as_mut().unwrap().address =
+            Some("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_owned());
         let mut mock = source(vec![Ok(page(vec![wrong], None))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -429,7 +516,11 @@ mod tests {
             Ok(page(vec![object(10, 2)], Some(b"next"))),
             Ok(page(vec![object(10, 3)], None)),
         ]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -438,7 +529,11 @@ mod tests {
             Ok(page(vec![], Some(b"same"))),
             Ok(page(vec![], Some(b"same"))),
         ]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -446,7 +541,11 @@ mod tests {
         let mut mock = source(vec![Ok(page(vec![], Some(b"next")))]);
         let mut bounded = limits();
         bounded.max_pages = 1;
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, bounded).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, bounded)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -454,19 +553,31 @@ mod tests {
         let mut mock = source(vec![Ok(page(vec![object(11, 2), object(12, 3)], None))]);
         let mut bounded = limits();
         bounded.max_objects = 1;
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, bounded).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, bounded)
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn insufficient_balance_reports_complete_inventory_as_error() {
         let mut mock = source(vec![Ok(page(vec![object(13, 2)], None))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 3, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 3, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
     async fn empty_token_fails_closed() {
         let mut mock = source(vec![Ok(page(vec![], Some(b"")))]);
-        assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
