@@ -420,12 +420,11 @@ mod tests {
             objects: VecDeque::new(),
             last_request: None,
         };
-        assert!(SuiGrpcObjectReader::connect_with_source(
-            network(CHAIN),
-            Box::new(mock)
-        )
-        .await
-        .is_err());
+        assert!(
+            SuiGrpcObjectReader::connect_with_source(network(CHAIN), Box::new(mock))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -435,12 +434,11 @@ mod tests {
             objects: VecDeque::new(),
             last_request: None,
         };
-        assert!(SuiGrpcObjectReader::connect_with_source(
-            network(CHAIN),
-            Box::new(mock)
-        )
-        .await
-        .is_err());
+        assert!(
+            SuiGrpcObjectReader::connect_with_source(network(CHAIN), Box::new(mock))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
