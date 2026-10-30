@@ -41,14 +41,20 @@ fn select_network(value: Option<&str>) -> Result<SuiNetwork> {
     Ok(network)
 }
 
-pub async fn get_sui_client() -> Result<SuiClient> {
-    let network_value = match std::env::var("SUI_NETWORK") {
+fn network_from_env(
+    read_env: impl FnOnce() -> std::result::Result<String, std::env::VarError>,
+) -> Result<SuiNetwork> {
+    let network_value = match read_env() {
         Ok(value) => Some(value),
         Err(std::env::VarError::NotPresent) => None,
         Err(error) => anyhow::bail!("Could not read SUI_NETWORK: {error}"),
     };
 
-    let network = select_network(network_value.as_deref())?;
+    select_network(network_value.as_deref())
+}
+
+pub async fn get_sui_client() -> Result<SuiClient> {
+    let network = network_from_env(|| std::env::var("SUI_NETWORK"))?;
     let builder = SuiClientBuilder::default();
 
     match network {
@@ -63,7 +69,43 @@ pub async fn get_sui_client() -> Result<SuiClient> {
 
 #[cfg(test)]
 mod tests {
-    use super::{SuiNetwork, parse_network, select_network};
+    use super::{network_from_env, parse_network, select_network, SuiNetwork};
+
+    #[test]
+    fn environment_lookup_defaults_to_localnet_when_variable_is_missing() {
+        let network = network_from_env(|| Err(std::env::VarError::NotPresent)).unwrap();
+        assert_eq!(network, SuiNetwork::Localnet);
+    }
+
+    #[test]
+    fn environment_lookup_selects_the_configured_network() {
+        let network =
+            network_from_env(|| Ok("testnet".to_owned())).expect("testnet should be selectable");
+        assert_eq!(network, SuiNetwork::Testnet);
+    }
+
+    #[test]
+    fn environment_lookup_rejects_disabled_mainnet() {
+        let error = network_from_env(|| Ok("mainnet".to_owned()))
+            .expect_err("mainnet must remain disabled");
+        assert!(error.to_string().contains("temporarily disabled"));
+    }
+
+    #[test]
+    fn environment_lookup_rejects_invalid_values() {
+        assert!(network_from_env(|| Ok("production".to_owned())).is_err());
+    }
+
+    #[test]
+    fn environment_lookup_reports_non_unicode_values() {
+        let error = network_from_env(|| {
+            Err(std::env::VarError::NotUnicode(std::ffi::OsString::from(
+                "invalid",
+            )))
+        })
+        .expect_err("non-Unicode environment values must be reported");
+        assert!(error.to_string().contains("Could not read SUI_NETWORK"));
+    }
 
     #[test]
     fn missing_network_defaults_to_localnet() {
