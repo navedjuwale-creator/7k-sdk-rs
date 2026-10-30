@@ -18,6 +18,23 @@ enum PaginationError {
     DeadlineExceeded,
 }
 
+impl std::fmt::Display for PaginationError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rpc(status) => write!(formatter, "RPC error: {status}"),
+            Self::RepeatedContinuationToken => {
+                write!(formatter, "repeated pagination continuation token")
+            }
+            Self::PageLimitExceeded { max_pages } => {
+                write!(formatter, "pagination page limit exceeded ({max_pages})")
+            }
+            Self::DeadlineExceeded => write!(formatter, "pagination deadline exceeded"),
+        }
+    }
+}
+
+impl std::error::Error for PaginationError {}
+
 async fn collect_owned_objects_bounded<T>(
     client: &mut StateServiceClient<T>,
     mut request: ListOwnedObjectsRequest,
