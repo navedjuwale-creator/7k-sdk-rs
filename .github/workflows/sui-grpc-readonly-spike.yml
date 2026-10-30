@@ -40,4 +40,4 @@ jobs:
 
       - name: Run explicitly authorized read-only testnet integration
         if: github.event_name == 'push' && github.ref == 'refs/heads/security/sui-grpc-readonly-spike'
-        run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml live_testnet_lists_owned_sui_coins_for_zero_address_fixture -- --ignored --nocapture
+        run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_returns_bounded_owned_sui_coin_sample -- --ignored --exact --nocapture
