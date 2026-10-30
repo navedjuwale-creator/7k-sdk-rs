@@ -88,7 +88,6 @@ pub async fn estimate_gas_fee(
     Ok(fee_usd)
 }
 
-
 fn calculate_net_gas_fee(computation_cost: u64, storage_cost: u64, storage_rebate: u64) -> Result<u64> {
     computation_cost
         .checked_add(storage_cost)
