@@ -6,6 +6,7 @@ on:
       - security/sui-grpc-readonly-spike
       - test/sui-bounded-pagination-testnet
       - test/sui-bounded-pagination-deadline
+      - test/sui-pagination-completeness-hardening
     paths:
       - "ci/sui-grpc-readonly-spike/**"
       - ".github/workflows/sui-grpc-readonly-spike.yml"
