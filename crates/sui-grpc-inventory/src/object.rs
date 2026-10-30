@@ -10,13 +10,7 @@ use sui_rpc::{
 };
 
 const RPC_DEADLINE: Duration = Duration::from_secs(10);
-const OBJECT_READ_MASK: &[&str] = &[
-    "object_id",
-    "version",
-    "digest",
-    "owner",
-    "object_type",
-];
+const OBJECT_READ_MASK: &[&str] = &["object_id", "version", "digest", "owner", "object_type"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SuiGrpcNetwork {
@@ -31,9 +25,7 @@ impl SuiGrpcNetwork {
         if !endpoint.starts_with("https://") {
             bail!("Sui gRPC endpoint must use HTTPS");
         }
-        if expected_chain_id.trim().is_empty()
-            || expected_chain_id.trim() != expected_chain_id
-        {
+        if expected_chain_id.trim().is_empty() || expected_chain_id.trim() != expected_chain_id {
             bail!("Expected Sui chain ID must be non-empty and contain no surrounding whitespace");
         }
         Ok(Self {
@@ -49,10 +41,7 @@ pub enum SuiOwner {
     Object { object_id: String },
     Shared { initial_shared_version: u64 },
     Immutable,
-    ConsensusAddress {
-        address: String,
-        start_version: u64,
-    },
+    ConsensusAddress { address: String, start_version: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -127,9 +116,7 @@ impl SuiGrpcObjectReader {
         let observed_chain_id = info
             .chain_id
             .context("Sui gRPC service info is missing chain_id")?;
-        if observed_chain_id.trim().is_empty()
-            || observed_chain_id.trim() != observed_chain_id
-        {
+        if observed_chain_id.trim().is_empty() || observed_chain_id.trim() != observed_chain_id {
             bail!("Sui gRPC service returned an invalid chain_id");
         }
         if observed_chain_id != network.expected_chain_id {
@@ -157,7 +144,10 @@ impl SuiGrpcObjectReader {
     ) -> Result<SuiObjectRecord> {
         validate_object_id(object_id)?;
         let canonical_requested_id = canonical_hex_id(object_id)?;
-        let mut paths: Vec<String> = OBJECT_READ_MASK.iter().map(|path| (*path).to_owned()).collect();
+        let mut paths: Vec<String> = OBJECT_READ_MASK
+            .iter()
+            .map(|path| (*path).to_owned())
+            .collect();
         if include_contents {
             paths.push("contents".to_owned());
         }
@@ -202,9 +192,7 @@ fn decode_object(
         bail!("Sui gRPC object has invalid version zero");
     }
 
-    let digest = object
-        .digest
-        .context("Sui gRPC object is missing digest")?;
+    let digest = object.digest.context("Sui gRPC object is missing digest")?;
     if digest.trim().is_empty() || digest.trim() != digest {
         bail!("Sui gRPC object has an invalid digest");
     }
@@ -216,9 +204,7 @@ fn decode_object(
         bail!("Sui gRPC object has an invalid object_type");
     }
 
-    let owner = object
-        .owner
-        .context("Sui gRPC object is missing owner")?;
+    let owner = object.owner.context("Sui gRPC object is missing owner")?;
     let owner = decode_owner(owner)?;
 
     let contents_bcs = if include_contents {
@@ -285,8 +271,7 @@ fn decode_owner(owner: sui_rpc::proto::sui::rpc::v2::Owner) -> Result<SuiOwner> 
             let address = owner
                 .address
                 .context("Consensus-address owner is missing address")?;
-            validate_object_id(&address)
-                .context("Consensus-address owner has invalid address")?;
+            validate_object_id(&address).context("Consensus-address owner has invalid address")?;
             let start_version = owner
                 .version
                 .context("Consensus-address owner is missing start version")?;
@@ -320,9 +305,7 @@ fn canonical_hex_id(value: &str) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        ObjectReadSource, SuiGrpcNetwork, SuiGrpcObjectReader, SuiOwner, decode_object,
-    };
+    use super::{ObjectReadSource, SuiGrpcNetwork, SuiGrpcObjectReader, SuiOwner, decode_object};
     use anyhow::{Result, anyhow};
     use async_trait::async_trait;
     use std::collections::VecDeque;
@@ -409,12 +392,11 @@ mod tests {
             objects: VecDeque::new(),
             last_request: None,
         };
-        assert!(SuiGrpcObjectReader::connect_with_source(
-            network(CHAIN),
-            Box::new(mock)
-        )
-        .await
-        .is_ok());
+        assert!(
+            SuiGrpcObjectReader::connect_with_source(network(CHAIN), Box::new(mock))
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]
@@ -424,12 +406,11 @@ mod tests {
             objects: VecDeque::new(),
             last_request: None,
         };
-        assert!(SuiGrpcObjectReader::connect_with_source(
-            network(CHAIN),
-            Box::new(mock)
-        )
-        .await
-        .is_err());
+        assert!(
+            SuiGrpcObjectReader::connect_with_source(network(CHAIN), Box::new(mock))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -471,7 +452,12 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(record.owner, SuiOwner::Address { address: ADDRESS.to_owned() });
+        assert_eq!(
+            record.owner,
+            SuiOwner::Address {
+                address: ADDRESS.to_owned()
+            }
+        );
     }
 
     #[tokio::test]
@@ -483,7 +469,12 @@ mod tests {
             false,
         )
         .unwrap();
-        assert_eq!(record.owner, SuiOwner::Object { object_id: ADDRESS.to_owned() });
+        assert_eq!(
+            record.owner,
+            SuiOwner::Object {
+                object_id: ADDRESS.to_owned()
+            }
+        );
     }
 
     #[tokio::test]
@@ -505,13 +496,8 @@ mod tests {
 
     #[tokio::test]
     async fn decodes_immutable_owner() {
-        let record = decode_object(
-            object(owner(4, None, None)),
-            CHAIN,
-            &"a".repeat(64),
-            false,
-        )
-        .unwrap();
+        let record =
+            decode_object(object(owner(4, None, None)), CHAIN, &"a".repeat(64), false).unwrap();
         assert_eq!(record.owner, SuiOwner::Immutable);
     }
 
@@ -548,7 +534,9 @@ mod tests {
         let mut missing_owner = object(owner(4, None, None));
         missing_owner.owner = None;
         assert!(decode_object(missing_owner, CHAIN, &"a".repeat(64), false).is_err());
-        assert!(decode_object(object(owner(4, None, None)), CHAIN, &"c".repeat(64), false).is_err());
+        assert!(
+            decode_object(object(owner(4, None, None)), CHAIN, &"c".repeat(64), false).is_err()
+        );
     }
 
     #[test]
