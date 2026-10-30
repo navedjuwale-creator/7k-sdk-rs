@@ -1,0 +1,33 @@
+name: Sui neutral object boundary contract
+
+on:
+  push:
+    branches:
+      - test/sui-neutral-object-boundary
+    paths:
+      - "crates/sui-neutral-object-boundary/**"
+      - ".github/workflows/sui-neutral-object-boundary.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-neutral-object-boundary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format
+        run: rustfmt --edition 2024 --check crates/sui-neutral-object-boundary/src/lib.rs
+      - name: Compile contract independently
+        run: cargo check --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
+      - name: Run schema and validation tests
+        run: cargo test --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
