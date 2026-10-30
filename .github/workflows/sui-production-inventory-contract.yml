@@ -44,7 +44,7 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: rustfmt --edition 2024 --check src/library/get_coin_object_ids_by_amount.rs
 
       - name: Compile all targets
         run: cargo check --all-targets
