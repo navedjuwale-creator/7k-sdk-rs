@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use prost_types::FieldMask;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::time::Duration;
 use sui_rpc::{
     Client,
@@ -318,7 +318,7 @@ fn validate_coin_type(coin_type: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{CoinPageSource, GrpcCoinInventory, InventoryLimits, collect_coin_inventory};
+    use super::{CoinPageSource, InventoryLimits, collect_coin_inventory};
     use anyhow::{Result, anyhow};
     use async_trait::async_trait;
     use std::{collections::VecDeque, time::Duration};
@@ -579,7 +579,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn inventory_result_type_is_stable() {
-        let _ = std::mem::size_of::<GrpcCoinInventory>();
+    async fn total_balance_overflow_fails_closed() {
+        let mut mock = source(vec![Ok(page(
+            vec![object(14, u64::MAX), object(15, 1)],
+            None,
+        ))]);
+        assert!(
+            collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
+                .await
+                .is_err()
+        );
     }
 }
