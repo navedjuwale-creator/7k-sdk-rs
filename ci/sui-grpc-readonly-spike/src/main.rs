@@ -20,6 +20,9 @@ enum PaginationError {
     Rpc(tonic::Status),
     RepeatedContinuationToken,
     PageLimitExceeded { max_pages: usize },
+    InvalidPageSizeLimit { max_page_size: usize },
+    PageObjectLimitExceeded { max_page_size: usize, actual: usize },
+    TotalObjectLimitExceeded { max_objects: usize, actual: usize },
     DeadlineExceeded,
 }
 
@@ -34,6 +37,15 @@ impl std::fmt::Display for PaginationError {
             Self::PageLimitExceeded { max_pages } => {
                 write!(formatter, "pagination page limit exceeded ({max_pages})")
             }
+            Self::InvalidPageSizeLimit { max_page_size } => {
+                write!(formatter, "invalid page size limit ({max_page_size}); expected 1..=1000")
+            }
+            Self::PageObjectLimitExceeded { max_page_size, actual } => {
+                write!(formatter, "response page contains {actual} objects; limit is {max_page_size}")
+            }
+            Self::TotalObjectLimitExceeded { max_objects, actual } => {
+                write!(formatter, "collection contains {actual} objects; limit is {max_objects}")
+            }
             Self::DeadlineExceeded => write!(formatter, "pagination deadline exceeded"),
         }
     }
@@ -47,6 +59,8 @@ async fn collect_owned_objects_bounded<T>(
     client: &mut StateServiceClient<T>,
     mut request: ListOwnedObjectsRequest,
     max_pages: usize,
+    max_page_size: usize,
+    max_objects: usize,
     max_duration: Duration,
 ) -> Result<Vec<Object>, PaginationError>
 where
@@ -59,6 +73,10 @@ where
     if max_pages == 0 {
         return Err(PaginationError::PageLimitExceeded { max_pages });
     }
+    if !(1..=1000).contains(&max_page_size) {
+        return Err(PaginationError::InvalidPageSizeLimit { max_page_size });
+    }
+    request = request.with_page_size(max_page_size as i32);
 
     let deadline = tokio::time::Instant::now() + max_duration;
     let mut objects = Vec::new();
@@ -82,6 +100,14 @@ where
         .map_err(PaginationError::Rpc)?
         .into_inner();
 
+        let page_count = response.objects.len();
+        if page_count > max_page_size {
+            return Err(PaginationError::PageObjectLimitExceeded { max_page_size, actual: page_count });
+        }
+        let total_count = objects.len().saturating_add(page_count);
+        if total_count > max_objects {
+            return Err(PaginationError::TotalObjectLimitExceeded { max_objects, actual: total_count });
+        }
         objects.extend(response.objects);
         match response.next_page_token {
             Some(token) => {
@@ -210,6 +236,8 @@ mod tests {
             &mut state_client,
             request,
             MAX_PAGES,
+            1000,
+            MAX_PAGES * 1000,
             Duration::from_secs(30),
         )
         .await
@@ -481,7 +509,7 @@ mod tests {
         let (endpoint, seen, shutdown) = start_mock_server(PageScenario::RepeatToken).await;
         let mut client = direct_state_client(endpoint).await;
         let result = collect_owned_objects_bounded(
-            &mut client, fixture_request(), 10, Duration::from_secs(3),
+            &mut client, fixture_request(), 10, 1000, 10000, Duration::from_secs(3),
         ).await;
 
         assert!(matches!(result, Err(PaginationError::RepeatedContinuationToken)));
@@ -493,11 +521,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn bounded_adapter_follows_token_after_empty_intermediate_page() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::EmptyMiddle).await;
+        let mut client = direct_state_client(endpoint).await;
+        let objects = collect_owned_objects_bounded(
+            &mut client, fixture_request(), 3, 1000, 3000, Duration::from_secs(3),
+        )
+        .await
+        .expect("empty intermediate page must not be treated as completion");
+        assert_eq!(objects.len(), 1);
+        assert_eq!(objects[0].object_id.as_deref(), Some("fixture-after-empty-page"));
+        assert_eq!(*seen.lock().expect("request log lock"), vec![None, Some(b"page-2".to_vec())]);
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_rejects_zero_page_budget_without_rpc() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(
+            &mut client, fixture_request(), 0, 1000, 1000, Duration::from_secs(3),
+        ).await;
+        assert!(matches!(result, Err(PaginationError::PageLimitExceeded { max_pages: 0 })));
+        assert!(seen.lock().expect("request log lock").is_empty());
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_enforces_total_object_limit_without_partial_success() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(
+            &mut client, fixture_request(), 2, 1000, 1, Duration::from_secs(3),
+        ).await;
+        assert!(matches!(result, Err(PaginationError::TotalObjectLimitExceeded { max_objects: 1, actual: 2 })));
+        assert_eq!(seen.lock().expect("request log lock").len(), 2);
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_rejects_invalid_page_size_limit_before_rpc() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(
+            &mut client, fixture_request(), 2, 1001, 2000, Duration::from_secs(3),
+        ).await;
+        assert!(matches!(result, Err(PaginationError::InvalidPageSizeLimit { max_page_size: 1001 })));
+        assert!(seen.lock().expect("request log lock").is_empty());
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
     async fn bounded_adapter_collects_pages_and_stops_at_end_token() {
         let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
         let mut client = direct_state_client(endpoint).await;
         let objects = collect_owned_objects_bounded(
-            &mut client, fixture_request(), 2, Duration::from_secs(3),
+            &mut client, fixture_request(), 2, 1000, 2000, Duration::from_secs(3),
         )
             .await
             .expect("two pages should complete");
@@ -517,7 +596,7 @@ mod tests {
         let (endpoint, seen, shutdown) = start_mock_server(PageScenario::TwoPages).await;
         let mut client = direct_state_client(endpoint).await;
         let result = collect_owned_objects_bounded(
-            &mut client, fixture_request(), 1, Duration::from_secs(3),
+            &mut client, fixture_request(), 1, 1000, 1000, Duration::from_secs(3),
         ).await;
 
         assert!(matches!(
@@ -534,7 +613,7 @@ mod tests {
         let mut client = direct_state_client(endpoint).await;
         let started = tokio::time::Instant::now();
         let result = collect_owned_objects_bounded(
-            &mut client, fixture_request(), 10, Duration::from_millis(50),
+            &mut client, fixture_request(), 10, 1000, 10000, Duration::from_millis(50),
         ).await;
         let elapsed = started.elapsed();
 
@@ -549,7 +628,7 @@ mod tests {
             start_mock_server(PageScenario::FailOnSecondPage).await;
         let mut client = direct_state_client(endpoint).await;
         let result = collect_owned_objects_bounded(
-            &mut client, fixture_request(), 10, Duration::from_secs(3),
+            &mut client, fixture_request(), 10, 1000, 10000, Duration::from_secs(3),
         ).await;
 
         assert!(matches!(result, Err(PaginationError::Rpc(_))));
