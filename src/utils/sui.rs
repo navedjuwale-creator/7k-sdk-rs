@@ -1,4 +1,4 @@
-use crate::consts::SUI_TYPE;
+use crate::consts::{SUI_FULL_TYPE, SUI_TYPE};
 use crate::library::get_coin_object_ids_by_amount::get_coin_object_ids_by_amount;
 use anyhow::{Result, anyhow};
 use std::ops::{Deref, DerefMut};
@@ -285,12 +285,7 @@ impl Ptb {
             if amount == 0 {
                 return Err(anyhow!("Requested SUI amount must be greater than zero"));
             }
-            let split_total = splits.iter().try_fold(0u64, |total, split| {
-                total.checked_add(*split)
-            }).ok_or_else(|| anyhow!("SUI split amount overflow"))?;
-            if split_total != amount {
-                return Err(anyhow!("SUI split amounts ({split_total}) do not equal requested amount ({amount})"));
-            }
+            validate_sui_split_amounts(amount, splits)?;
             return self.split_coins(self.gas(), splits);
         }
 
@@ -389,8 +384,21 @@ pub async fn get_owned_objects_by_page(
     })
 }
 
+fn validate_sui_split_amounts(amount: u64, splits: &[u64]) -> Result<()> {
+    let split_total = splits
+        .iter()
+        .try_fold(0u64, |total, split| total.checked_add(*split))
+        .ok_or_else(|| anyhow!("SUI split amount overflow"))?;
+    if split_total != amount {
+        return Err(anyhow!(
+            "SUI split amounts ({split_total}) do not equal requested amount ({amount})"
+        ));
+    }
+    Ok(())
+}
+
 fn is_sui_coin(coin_type: &str) -> bool {
-    coin_type.contains("0x2::sui::SUI")
+    coin_type == SUI_TYPE || coin_type == SUI_FULL_TYPE
 }
 
 #[async_trait::async_trait]
@@ -548,4 +556,25 @@ macro_rules! destruct {
     (_size:expr, $vec:expr) => {
         compile_error!("Tuple size too large!");
     };
+}
+
+
+#[cfg(test)]
+mod sui_input_tests {
+    use super::validate_sui_split_amounts;
+
+    #[test]
+    fn accepts_route_splits_matching_requested_sui_amount() {
+        assert!(validate_sui_split_amounts(12, &[5, 7]).is_ok());
+    }
+
+    #[test]
+    fn rejects_route_splits_that_do_not_match_requested_sui_amount() {
+        assert!(validate_sui_split_amounts(12, &[5, 6]).is_err());
+    }
+
+    #[test]
+    fn rejects_sui_split_sum_overflow() {
+        assert!(validate_sui_split_amounts(u64::MAX, &[u64::MAX, 1]).is_err());
+    }
 }
