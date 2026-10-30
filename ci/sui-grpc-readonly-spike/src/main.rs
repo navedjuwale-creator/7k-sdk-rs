@@ -209,6 +209,90 @@ mod tests {
         Ok(())
     }
 
+    // This integration test exercises the bounded direct adapter against
+    // the public Sui testnet endpoint. It uses only the all-zero owner fixture,
+    // requests at most 10 objects per page, and fetches at most 2 pages.
+    #[tokio::test]
+    #[ignore = "live bounded direct-adapter Sui testnet integration"]
+    async fn live_testnet_bounded_adapter_enforces_page_budget() -> Result<(), Box<dyn std::error::Error>> {
+        use tonic::transport::{ClientTlsConfig, Endpoint};
+
+        const PAGE_SIZE: u32 = 10;
+        const MAX_PAGES: usize = 2;
+
+        let endpoint = Endpoint::from_static(Client::TESTNET_FULLNODE)
+            .tls_config(ClientTlsConfig::new().with_enabled_roots())?
+            .connect_timeout(Duration::from_secs(5));
+        let channel = endpoint.connect().await?;
+        let mut state_client = StateServiceClient::new(channel);
+        let request = ListOwnedObjectsRequest::default()
+            .with_owner(FIXTURE_OWNER)
+            .with_object_type(SUI_COIN_TYPE)
+            .with_page_size(PAGE_SIZE);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            collect_owned_objects_bounded(&mut state_client, request, MAX_PAGES),
+        )
+        .await??;
+
+        println!(
+            "LIVE_BOUNDED_ADAPTER_OK endpoint={} owner={} object_type={} page_size={} max_pages={} sampled_objects={} completeness=complete_within_page_budget",
+            Client::TESTNET_FULLNODE,
+            FIXTURE_OWNER,
+            SUI_COIN_TYPE,
+            PAGE_SIZE,
+            MAX_PAGES,
+            result.len()
+        );
+        Ok(())
+    }
+
+    // Separate bounded-outcome probe: reaching the configured page cap is
+    // an expected incomplete result, not a successful complete inventory.
+    #[tokio::test]
+    #[ignore = "live bounded direct-adapter Sui testnet page-cap integration"]
+    async fn live_testnet_bounded_adapter_reports_page_cap_as_incomplete() -> Result<(), Box<dyn std::error::Error>> {
+        use tonic::transport::{ClientTlsConfig, Endpoint};
+
+        const PAGE_SIZE: u32 = 10;
+        const MAX_PAGES: usize = 1;
+
+        let endpoint = Endpoint::from_static(Client::TESTNET_FULLNODE)
+            .tls_config(ClientTlsConfig::new().with_enabled_roots())?
+            .connect_timeout(Duration::from_secs(5));
+        let channel = endpoint.connect().await?;
+        let mut state_client = StateServiceClient::new(channel);
+        let request = ListOwnedObjectsRequest::default()
+            .with_owner(FIXTURE_OWNER)
+            .with_object_type(SUI_COIN_TYPE)
+            .with_page_size(PAGE_SIZE);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            collect_owned_objects_bounded(&mut state_client, request, MAX_PAGES),
+        )
+        .await?;
+
+        match result {
+            Ok(objects) => println!(
+                "LIVE_BOUNDED_ADAPTER_RESULT endpoint={} sampled_objects={} completeness=complete_before_page_cap",
+                Client::TESTNET_FULLNODE,
+                objects.len()
+            ),
+            Err(PaginationError::PageLimitExceeded { max_pages }) => println!(
+                "LIVE_BOUNDED_ADAPTER_RESULT endpoint={} max_pages={} completeness=bounded_sample_not_complete",
+                Client::TESTNET_FULLNODE,
+                max_pages
+            ),
+            Err(PaginationError::Rpc(status)) => return Err(Box::new(status)),
+            Err(PaginationError::RepeatedContinuationToken) => {
+                return Err("testnet repeated a continuation token".into());
+            }
+        }
+        Ok(())
+    }
+
     use std::sync::{Arc, Mutex};
     use tokio::sync::oneshot;
     use tonic::{Request, Response, Status};
