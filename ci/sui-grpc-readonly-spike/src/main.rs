@@ -76,7 +76,7 @@ where
     if !(1..=1000).contains(&max_page_size) {
         return Err(PaginationError::InvalidPageSizeLimit { max_page_size });
     }
-    request = request.with_page_size(max_page_size as i32);
+    request = request.with_page_size(max_page_size as u32);
 
     let deadline = tokio::time::Instant::now() + max_duration;
     let mut objects = Vec::new();
