@@ -201,7 +201,7 @@ mod tests {
         let mut source = record(SuiOwner::Immutable);
         source.version = 0;
         assert!(to_neutral_record(&source).is_err());
-        let mut source = record(SuiOwner::Shared {
+        let source = record(SuiOwner::Shared {
             initial_shared_version: 0,
         });
         assert!(to_neutral_record(&source).is_err());
