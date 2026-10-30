@@ -441,6 +441,24 @@ mod tests {
         );
     }
 
+    /// Diagnostic probe used once to capture the live full Testnet chain ID.
+    #[tokio::test]
+    #[ignore = "requires public Sui Testnet gRPC connectivity"]
+    async fn live_testnet_probe_reports_chain_identity() {
+        let client = sui_rpc::Client::new("https://fullnode.testnet.sui.io:443").unwrap();
+        let info = client
+            .ledger_client()
+            .get_service_info(GetServiceInfoRequest::default())
+            .await
+            .unwrap()
+            .into_inner();
+        let chain = info.chain.as_deref().unwrap_or("");
+        let chain_id = info.chain_id.as_deref().unwrap_or("");
+        assert_eq!(chain, "testnet", "endpoint did not identify itself as Sui Testnet");
+        assert!(!chain_id.is_empty(), "GetServiceInfo omitted chain_id");
+        eprintln!("SUI_TESTNET_CHAIN_ID={chain_id}");
+    }
+
     /// Live smoke test. Run explicitly with SUI_TESTNET_EXPECTED_CHAIN_ID set to
     /// the independently pinned full Base58 genesis checkpoint digest.
     #[tokio::test]
