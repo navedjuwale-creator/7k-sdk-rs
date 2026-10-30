@@ -62,6 +62,13 @@ The adapter:
 - follows continuation tokens even when a page contains no objects;
 - returns an RPC error or explicit limit/cycle error rather than exposing accumulated objects as a successful complete result.
 
-Local mock-gRPC regression tests cover normal two-page completion, repeated-token rejection, page-budget exhaustion, and a later-page RPC failure. The existing live testnet probe still uses the SDK's high-level stream and remains a bounded 1,000-object sample; it does not yet validate the direct adapter against testnet.
+Local mock-gRPC regression tests cover normal two-page completion, repeated-token rejection, page-budget exhaustion, and a later-page RPC failure. The existing live testnet probe still uses the SDK's high-level stream and remains a bounded 1,000-object sample. A separate ignored integration test exercises this direct adapter against testnet using the SDK client's configured `state_client()` transport.
 
-**Integration boundary:** the adapter is a tested primitive, not yet a production collector. A production caller must construct the generated state client over an appropriately configured authenticated/TLS channel, choose a documented page budget and overall deadline, preserve all request filters across pages, and treat every error or exhausted budget as incomplete. No mainnet or user-wallet access is performed here.
+**Integration boundary:** the adapter is a tested primitive, not yet a production collector. The live probe obtains the generated state client from the SDK's configured `Client::state_client()` transport. It sets `page_size=1000` (the protocol maximum; the default is 50), enforces an 8-page budget and a 30-second overall deadline, preserves request filters across pages, and treats every error or exhausted budget as incomplete. No mainnet or user-wallet access is performed here.
+
+
+## Live bounded-adapter testnet observation
+
+The first live run compiled successfully and all 15 ordinary tests passed. The bounded adapter integration then failed closed with `PageLimitExceeded { max_pages: 8 }`. This is evidence that the request still had a continuation token after eight pages; it is not evidence of an RPC error or natural completion. The initial request omitted `page_size`, so the protocol default of 50 entries per page applied. The probe now explicitly requests the documented maximum of 1,000 entries per page while retaining the 8-page ceiling and 30-second timeout. The next run must establish whether the larger page size reaches a natural end. If the budget is still exhausted, the result remains incomplete and must be investigated rather than relabeled as complete.
+
+Protocol page-size contract: https://github.com/MystenLabs/sui-apis/blob/main/proto/sui/rpc/v2/state_service.proto
