@@ -1,0 +1,39 @@
+name: Sui gRPC + legacy SDK compatibility probe
+
+on:
+  push:
+    branches:
+      - test/sui-grpc-legacy-sdk-compat
+    paths:
+      - "crates/sui-grpc-compat-probe/**"
+      - ".github/workflows/sui-grpc-legacy-sdk-compat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-grpc-legacy-sdk-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: rustfmt --edition 2024 --check crates/sui-grpc-compat-probe/src/lib.rs
+
+      - name: Compile combined dependency graph and typed conversion
+        run: cargo check --manifest-path crates/sui-grpc-compat-probe/Cargo.toml --all-targets
+
+      - name: Run pure conversion unit tests
+        run: cargo test --manifest-path crates/sui-grpc-compat-probe/Cargo.toml --all-targets
