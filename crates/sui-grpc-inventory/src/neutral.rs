@@ -3,12 +3,13 @@
 //! This module remains in the gRPC dependency domain. It does not import the legacy
 //! Sui SDK and does not construct transaction arguments.
 
-use anyhow::{Result, anyhow, bail};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
-use sui_neutral_object_boundary::{NeutralObjectRecord, NeutralOwner, SCHEMA_VERSION};
 use crate::{SuiObjectRecord, SuiOwner};
+use anyhow::{anyhow, bail, Result};
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use sui_neutral_object_boundary::{NeutralObjectRecord, NeutralOwner, SCHEMA_VERSION};
 
 /// Convert a validated gRPC read record to the dependency-neutral schema.
+///
 /// Hex identifiers are normalized to the schema's canonical 0x-prefixed lowercase form;
 /// the chain ID, digest, type, versions, owner metadata and BCS bytes are otherwise preserved.
 pub fn to_neutral_record(record: &SuiObjectRecord) -> Result<NeutralObjectRecord> {
@@ -32,14 +33,21 @@ pub fn to_neutral_record(record: &SuiObjectRecord) -> Result<NeutralObjectRecord
         SuiOwner::Object { object_id } => NeutralOwner::Object {
             object_id: canonical_id(object_id)?,
         },
-        SuiOwner::Shared { initial_shared_version } => {
+        SuiOwner::Shared {
+            initial_shared_version,
+        } => {
             if *initial_shared_version == 0 {
                 bail!("gRPC record has shared initial version zero");
             }
-            NeutralOwner::Shared { initial_shared_version: *initial_shared_version }
+            NeutralOwner::Shared {
+                initial_shared_version: *initial_shared_version,
+            }
         }
         SuiOwner::Immutable => NeutralOwner::Immutable,
-        SuiOwner::ConsensusAddress { address, start_version } => {
+        SuiOwner::ConsensusAddress {
+            address,
+            start_version,
+        } => {
             if *start_version == 0 {
                 bail!("gRPC record has consensus start version zero");
             }
@@ -58,9 +66,14 @@ pub fn to_neutral_record(record: &SuiObjectRecord) -> Result<NeutralObjectRecord
         digest: record.digest.clone(),
         object_type: record.object_type.clone(),
         owner,
-        contents_bcs_base64: record.contents_bcs.as_ref().map(|bytes| STANDARD.encode(bytes)),
+        contents_bcs_base64: record
+            .contents_bcs
+            .as_ref()
+            .map(|bytes| STANDARD.encode(bytes)),
     };
-    neutral.validate().map_err(|error| anyhow!("neutral schema validation failed: {error}"))?;
+    neutral
+        .validate()
+        .map_err(|error| anyhow!("neutral schema validation failed: {error}"))?;
     Ok(neutral)
 }
 
@@ -101,11 +114,41 @@ mod tests {
     #[test]
     fn maps_all_owner_variants_without_metadata_loss() {
         let cases = [
-            (SuiOwner::Address { address: ADDRESS.to_owned() }, NeutralOwner::Address { address: ADDRESS.to_owned() }),
-            (SuiOwner::Object { object_id: ADDRESS.to_owned() }, NeutralOwner::Object { object_id: ADDRESS.to_owned() }),
-            (SuiOwner::Shared { initial_shared_version: 7 }, NeutralOwner::Shared { initial_shared_version: 7 }),
+            (
+                SuiOwner::Address {
+                    address: ADDRESS.to_owned(),
+                },
+                NeutralOwner::Address {
+                    address: ADDRESS.to_owned(),
+                },
+            ),
+            (
+                SuiOwner::Object {
+                    object_id: ADDRESS.to_owned(),
+                },
+                NeutralOwner::Object {
+                    object_id: ADDRESS.to_owned(),
+                },
+            ),
+            (
+                SuiOwner::Shared {
+                    initial_shared_version: 7,
+                },
+                NeutralOwner::Shared {
+                    initial_shared_version: 7,
+                },
+            ),
             (SuiOwner::Immutable, NeutralOwner::Immutable),
-            (SuiOwner::ConsensusAddress { address: ADDRESS.to_owned(), start_version: 9 }, NeutralOwner::ConsensusV2 { address: ADDRESS.to_owned(), start_version: 9 }),
+            (
+                SuiOwner::ConsensusAddress {
+                    address: ADDRESS.to_owned(),
+                    start_version: 9,
+                },
+                NeutralOwner::ConsensusV2 {
+                    address: ADDRESS.to_owned(),
+                    start_version: 9,
+                },
+            ),
         ];
         for (source_owner, expected_owner) in cases {
             let source = record(source_owner);
@@ -128,16 +171,28 @@ mod tests {
         let json = to_neutral_json(&source).unwrap();
         let decoded: NeutralObjectRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.contents_bcs_base64.as_deref(), Some("AAEC/f7/"));
-        assert_eq!(STANDARD.decode(decoded.contents_bcs_base64.unwrap()).unwrap(), source.contents_bcs.unwrap());
+        assert_eq!(
+            STANDARD
+                .decode(decoded.contents_bcs_base64.unwrap())
+                .unwrap(),
+            source.contents_bcs.unwrap()
+        );
     }
 
     #[test]
     fn canonicalizes_hex_identifiers_without_mutating_other_fields() {
-        let mut source = record(SuiOwner::Address { address: format!("0x{}", "BB".repeat(32)) });
+        let mut source = record(SuiOwner::Address {
+            address: format!("0x{}", "BB".repeat(32)),
+        });
         source.object_id = "0x".to_owned() + &"AA".repeat(32);
         let mapped = to_neutral_record(&source).unwrap();
         assert_eq!(mapped.object_id, ID);
-        assert_eq!(mapped.owner, NeutralOwner::Address { address: ADDRESS.to_owned() });
+        assert_eq!(
+            mapped.owner,
+            NeutralOwner::Address {
+                address: ADDRESS.to_owned()
+            }
+        );
         assert_eq!(mapped.digest, source.digest);
     }
 
@@ -146,7 +201,9 @@ mod tests {
         let mut source = record(SuiOwner::Immutable);
         source.version = 0;
         assert!(to_neutral_record(&source).is_err());
-        let mut source = record(SuiOwner::Shared { initial_shared_version: 0 });
+        let mut source = record(SuiOwner::Shared {
+            initial_shared_version: 0,
+        });
         assert!(to_neutral_record(&source).is_err());
         let mut source = record(SuiOwner::Immutable);
         source.object_id = "0x1234".to_owned();
