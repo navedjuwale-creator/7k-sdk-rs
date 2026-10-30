@@ -3,6 +3,11 @@
 //! This crate intentionally depends on neither `sui-rpc` nor `sui-sdk`.
 //! It does not construct transaction arguments or transactions.
 
+pub mod conversion_policy;
+pub use conversion_policy::{
+    ConversionError, ConversionIntent, ConversionPlan, plan_object_conversion,
+};
+
 use serde::{Deserialize, Serialize};
 
 pub const SCHEMA_VERSION: u16 = 1;
@@ -61,9 +66,7 @@ impl NeutralObjectRecord {
     /// Validate structural invariants without interpreting or converting SDK-specific types.
     pub fn validate(&self) -> Result<(), ValidationError> {
         if self.schema_version != SCHEMA_VERSION {
-            return Err(ValidationError::UnsupportedSchemaVersion(
-                self.schema_version,
-            ));
+            return Err(ValidationError::UnsupportedSchemaVersion(self.schema_version));
         }
         if self.chain_id.trim().is_empty() {
             return Err(ValidationError::EmptyChainId);
@@ -89,23 +92,15 @@ impl NeutralObjectRecord {
             NeutralOwner::Object { object_id } if !is_object_id(object_id) => {
                 return Err(ValidationError::InvalidParentObjectId);
             }
-            NeutralOwner::Shared {
-                initial_shared_version: 0,
-            } => {
+            NeutralOwner::Shared { initial_shared_version: 0 } => {
                 return Err(ValidationError::ZeroSharedInitialVersion);
             }
-            NeutralOwner::ConsensusV2 {
-                start_version: 0, ..
-            } => {
+            NeutralOwner::ConsensusV2 { start_version: 0, .. } => {
                 return Err(ValidationError::ZeroConsensusStartVersion);
             }
             _ => {}
         }
-        if self
-            .contents_bcs_base64
-            .as_ref()
-            .is_some_and(|value| value.is_empty())
-        {
+        if self.contents_bcs_base64.as_ref().is_some_and(|value| value.is_empty()) {
             return Err(ValidationError::EmptyContents);
         }
         Ok(())
@@ -141,9 +136,7 @@ mod tests {
 
     #[test]
     fn address_owned_record_round_trips_without_field_loss() {
-        let value = record(NeutralOwner::Address {
-            address: ADDRESS.to_owned(),
-        });
+        let value = record(NeutralOwner::Address { address: ADDRESS.to_owned() });
         value.validate().unwrap();
         let encoded = serde_json::to_string(&value).unwrap();
         let decoded: NeutralObjectRecord = serde_json::from_str(&encoded).unwrap();
@@ -153,20 +146,11 @@ mod tests {
     #[test]
     fn all_owner_variants_round_trip() {
         let owners = [
-            NeutralOwner::Address {
-                address: ADDRESS.to_owned(),
-            },
-            NeutralOwner::Object {
-                object_id: ADDRESS.to_owned(),
-            },
-            NeutralOwner::Shared {
-                initial_shared_version: 3,
-            },
+            NeutralOwner::Address { address: ADDRESS.to_owned() },
+            NeutralOwner::Object { object_id: ADDRESS.to_owned() },
+            NeutralOwner::Shared { initial_shared_version: 3 },
             NeutralOwner::Immutable,
-            NeutralOwner::ConsensusV2 {
-                address: ADDRESS.to_owned(),
-                start_version: 4,
-            },
+            NeutralOwner::ConsensusV2 { address: ADDRESS.to_owned(), start_version: 4 },
         ];
         for owner in owners {
             let value = record(owner);
@@ -198,38 +182,21 @@ mod tests {
 
     #[test]
     fn rejects_invalid_owner_metadata() {
-        let bad_address = record(NeutralOwner::Address {
-            address: "not-an-address".to_owned(),
-        });
-        assert_eq!(
-            bad_address.validate(),
-            Err(ValidationError::InvalidOwnerAddress)
-        );
-        let bad_shared = record(NeutralOwner::Shared {
-            initial_shared_version: 0,
-        });
-        assert_eq!(
-            bad_shared.validate(),
-            Err(ValidationError::ZeroSharedInitialVersion)
-        );
+        let bad_address = record(NeutralOwner::Address { address: "not-an-address".to_owned() });
+        assert_eq!(bad_address.validate(), Err(ValidationError::InvalidOwnerAddress));
+        let bad_shared = record(NeutralOwner::Shared { initial_shared_version: 0 });
+        assert_eq!(bad_shared.validate(), Err(ValidationError::ZeroSharedInitialVersion));
         let bad_consensus = record(NeutralOwner::ConsensusV2 {
-            address: ADDRESS.to_owned(),
-            start_version: 0,
+            address: ADDRESS.to_owned(), start_version: 0,
         });
-        assert_eq!(
-            bad_consensus.validate(),
-            Err(ValidationError::ZeroConsensusStartVersion)
-        );
+        assert_eq!(bad_consensus.validate(), Err(ValidationError::ZeroConsensusStartVersion));
     }
 
     #[test]
     fn rejects_unknown_schema_versions_and_unknown_json_fields() {
         let mut value = record(NeutralOwner::Immutable);
         value.schema_version = 2;
-        assert_eq!(
-            value.validate(),
-            Err(ValidationError::UnsupportedSchemaVersion(2))
-        );
+        assert_eq!(value.validate(), Err(ValidationError::UnsupportedSchemaVersion(2)));
         let json = r#"{"schema_version":1,"chain_id":"x","object_id":"0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":1,"digest":"d","object_type":"T","owner":{"kind":"immutable"},"unexpected":true}"#;
         assert!(serde_json::from_str::<NeutralObjectRecord>(json).is_err());
     }
