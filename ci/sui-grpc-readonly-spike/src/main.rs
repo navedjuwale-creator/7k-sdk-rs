@@ -401,7 +401,7 @@ mod tests {
         assert!(matches!(result, Err(PaginationError::RepeatedContinuationToken)));
         assert_eq!(
             *seen.lock().expect("request log lock"),
-            vec![None, Some(b"repeat".to_vec()), Some(b"repeat".to_vec())]
+            vec![None, Some(b"repeat".to_vec())]
         );
         let _ = shutdown.send(());
     }
