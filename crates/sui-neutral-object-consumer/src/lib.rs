@@ -44,6 +44,7 @@ pub fn parse_neutral_json(json: &str) -> Result<NeutralObjectRecord, ConsumerErr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sui_grpc_inventory::{SuiObjectRecord, SuiOwner, neutral::to_neutral_json};
     use sui_neutral_object_boundary::{NeutralOwner, SCHEMA_VERSION};
 
     const FIXTURE: &str =
@@ -78,6 +79,83 @@ mod tests {
                 .unwrap(),
             vec![0, 1, 2, 253, 254, 255]
         );
+    }
+
+    #[test]
+    fn producer_json_is_consumed_without_field_loss() {
+        let source = SuiObjectRecord {
+            chain_id: "pinned-test-chain-genesis-digest".to_owned(),
+            object_id: format!("0x{}", "a".repeat(64)),
+            version: 42,
+            digest: "Base58DigestPreservedExactly".to_owned(),
+            object_type: "0x2::example::Thing".to_owned(),
+            owner: SuiOwner::ConsensusAddress {
+                address: format!("0x{}", "b".repeat(64)),
+                start_version: 9,
+            },
+            contents_bcs: Some(vec![0, 1, 2, 253, 254, 255]),
+        };
+
+        let produced_json = to_neutral_json(&source).unwrap();
+        let consumed = parse_neutral_json(&produced_json).unwrap();
+
+        assert_eq!(consumed.schema_version, SCHEMA_VERSION);
+        assert_eq!(consumed.chain_id, source.chain_id);
+        assert_eq!(consumed.object_id, source.object_id);
+        assert_eq!(consumed.version, source.version);
+        assert_eq!(consumed.digest, source.digest);
+        assert_eq!(consumed.object_type, source.object_type);
+        assert_eq!(
+            consumed.owner,
+            NeutralOwner::ConsensusV2 {
+                address: format!("0x{}", "b".repeat(64)),
+                start_version: 9,
+            }
+        );
+        assert_eq!(
+            STANDARD
+                .decode(consumed.contents_bcs_base64.unwrap())
+                .unwrap(),
+            source.contents_bcs.unwrap()
+        );
+    }
+
+    #[test]
+    fn producer_consumer_round_trip_covers_each_owner_variant() {
+        let address = format!("0x{}", "b".repeat(64));
+        let cases = [
+            SuiOwner::Address {
+                address: address.clone(),
+            },
+            SuiOwner::Object {
+                object_id: address.clone(),
+            },
+            SuiOwner::Shared {
+                initial_shared_version: 7,
+            },
+            SuiOwner::Immutable,
+            SuiOwner::ConsensusAddress {
+                address,
+                start_version: 9,
+            },
+        ];
+
+        for owner in cases {
+            let source = SuiObjectRecord {
+                chain_id: "pinned-test-chain-genesis-digest".to_owned(),
+                object_id: format!("0x{}", "a".repeat(64)),
+                version: 42,
+                digest: "Base58DigestPreservedExactly".to_owned(),
+                object_type: "0x2::example::Thing".to_owned(),
+                owner,
+                contents_bcs: None,
+            };
+            let produced_json = to_neutral_json(&source).unwrap();
+            let consumed = parse_neutral_json(&produced_json).unwrap();
+            let expected_json = to_neutral_json(&source).unwrap();
+            let expected: NeutralObjectRecord = serde_json::from_str(&expected_json).unwrap();
+            assert_eq!(consumed, expected);
+        }
     }
 
     #[test]
