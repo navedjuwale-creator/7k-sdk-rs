@@ -500,22 +500,6 @@ mod tests {
         );
     }
 
-    fn reader_with_object(object: Object) -> SuiGrpcObjectReader {
-        let mut response = GetObjectResponse::default();
-        response.object = Some(object);
-        let mock = MockSource {
-            info: Some(Ok(service_info(Some(CHAIN)))),
-            objects: VecDeque::from([Ok(response)]),
-            last_request: None,
-        };
-        // Construct the reader directly so tests exercise the object adapter
-        // without making network requests.
-        SuiGrpcObjectReader {
-            source: Box::new(mock),
-            network: network(CHAIN),
-        }
-    }
-
     #[tokio::test]
     async fn verifies_chain_identity_before_returning_reader() {
         let mock = MockSource {
