@@ -1,5 +1,6 @@
 name: Sui gRPC neutral producer adapter
 # CI gate: producer formatting, isolated compile, and contract tests.
+# Keep this run on the final producer-fix commit; avoid concurrent pushes.
 
 on:
   push:
