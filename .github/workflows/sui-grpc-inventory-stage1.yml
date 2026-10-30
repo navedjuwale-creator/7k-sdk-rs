@@ -5,8 +5,7 @@ on:
     branches:
       - migrate/sui-grpc-client
     paths:
-      - "src/library/sui_grpc_inventory.rs"
-      - "src/library/mod.rs"
+      - "crates/sui-grpc-inventory/**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/sui-grpc-inventory-stage1.yml"
@@ -33,10 +32,10 @@ jobs:
           components: rustfmt
 
       - name: Check formatting
-        run: rustfmt --edition 2024 --check src/library/sui_grpc_inventory.rs
+        run: rustfmt --edition 2024 --check crates/sui-grpc-inventory/src/lib.rs
 
       - name: Compile all targets
-        run: cargo check --all-targets
+        run: cargo check --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
 
       - name: Run all tests
-        run: cargo test --all-targets
+        run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
