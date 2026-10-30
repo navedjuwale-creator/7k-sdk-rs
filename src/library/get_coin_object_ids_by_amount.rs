@@ -1,11 +1,10 @@
 use anyhow::{Context, Result, anyhow, bail};
 use std::{collections::HashSet, time::Duration};
 use sui_sdk::{
+    SuiClient,
     rpc_types::Coin,
     types::base_types::{ObjectID, SuiAddress},
-    SuiClient,
 };
-
 
 // Production inventory bounds. Reaching any bound before the server reports a
 // natural end is an error: callers must never receive a successful partial inventory.
