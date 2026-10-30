@@ -1,0 +1,31 @@
+name: Sui neutral conversion policy
+on:
+  push:
+    branches:
+      - test/sui-neutral-conversion-policy
+    paths:
+      - "crates/sui-neutral-object-boundary/**"
+      - ".github/workflows/sui-neutral-conversion-policy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-neutral-conversion-policy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Check formatting
+        run: cargo fmt --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all -- --check
+      - name: Compile isolated policy crate
+        run: cargo check --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
+      - name: Run boundary and conversion policy tests
+        run: cargo test --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
