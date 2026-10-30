@@ -165,6 +165,22 @@ mod tests {
     }
 
     #[test]
+    fn producer_json_matches_shared_schema_v1_fixture() {
+        const FIXTURE: &str = include_str!(
+            "../../sui-neutral-object-boundary/tests/fixtures/neutral-object-v1.json"
+        );
+        let source = record(SuiOwner::Address {
+            address: ADDRESS.to_owned(),
+        });
+        let produced: serde_json::Value =
+            serde_json::from_str(&to_neutral_json(&source).unwrap()).unwrap();
+        let fixture: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        assert_eq!(produced, fixture);
+        let decoded: NeutralObjectRecord = serde_json::from_value(fixture).unwrap();
+        decoded.validate().unwrap();
+    }
+
+    #[test]
     fn encodes_optional_bcs_payload_and_json_round_trips() {
         let mut source = record(SuiOwner::Immutable);
         source.contents_bcs = Some(vec![0, 1, 2, 253, 254, 255]);
