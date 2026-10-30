@@ -1,3 +1,6 @@
+pub mod object;
+pub use object::{SuiGrpcNetwork, SuiGrpcObjectReader, SuiObjectRecord, SuiOwner};
+
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use prost_types::FieldMask;
