@@ -69,7 +69,7 @@ pub async fn get_sui_client() -> Result<SuiClient> {
 
 #[cfg(test)]
 mod tests {
-    use super::{network_from_env, parse_network, select_network, SuiNetwork};
+    use super::{SuiNetwork, network_from_env, parse_network, select_network};
 
     #[test]
     fn environment_lookup_defaults_to_localnet_when_variable_is_missing() {
