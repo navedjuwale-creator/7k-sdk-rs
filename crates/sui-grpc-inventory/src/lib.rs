@@ -147,18 +147,17 @@ async fn collect_coin_inventory<S: CoinPageSource>(
             bail!("Sui gRPC coin inventory deadline exceeded; inventory is incomplete");
         }
 
-        let request = ListOwnedObjectsRequest {
-            owner: Some(owner.to_owned()),
-            page_size: Some(limits.page_size),
-            page_token: page_token.take(),
-            read_mask: Some(FieldMask {
-                paths: COIN_OBJECT_READ_MASK
-                    .iter()
-                    .map(|path| (*path).to_owned())
-                    .collect(),
-            }),
-            object_type: Some(expected_type.clone()),
-        };
+        let mut request = ListOwnedObjectsRequest::default();
+        request.owner = Some(owner.to_owned());
+        request.page_size = Some(limits.page_size);
+        request.page_token = page_token.take().map(Into::into);
+        request.read_mask = Some(FieldMask {
+            paths: COIN_OBJECT_READ_MASK
+                .iter()
+                .map(|path| (*path).to_owned())
+                .collect(),
+        });
+        request.object_type = Some(expected_type.clone());
 
         let response = tokio::time::timeout(remaining, source.list_owned_objects(request))
             .await
@@ -203,6 +202,7 @@ async fn collect_coin_inventory<S: CoinPageSource>(
                 if token.is_empty() {
                     bail!("Sui gRPC returned an empty continuation token; inventory is incomplete");
                 }
+                let token = token.to_vec();
                 if !seen_tokens.insert(token.clone()) {
                     bail!("Sui gRPC repeated a continuation token; inventory is incomplete");
                 }
@@ -361,22 +361,21 @@ mod tests {
 
     fn object(id_byte: u8, balance: u64) -> Object {
         let contents = bcs::to_bytes(&([id_byte; 32], balance)).unwrap();
-        Object {
-            object_id: Some(format!("0x{}", hex_id(id_byte))),
-            version: Some(1),
-            digest: Some("mock-digest".to_owned()),
-            owner: Some(Owner {
-                kind: Some(1),
-                address: Some(OWNER.to_owned()),
-                version: None,
-            }),
-            object_type: Some(EXPECTED_TYPE.to_owned()),
-            contents: Some(Bcs {
-                name: None,
-                value: Some(contents.into()),
-            }),
-            ..Default::default()
-        }
+        let mut owner = Owner::default();
+        owner.kind = Some(1);
+        owner.address = Some(OWNER.to_owned());
+
+        let mut bcs_contents = Bcs::default();
+        bcs_contents.value = Some(contents.into());
+
+        let mut object = Object::default();
+        object.object_id = Some(format!("0x{}", hex_id(id_byte)));
+        object.version = Some(1);
+        object.digest = Some("mock-digest".to_owned());
+        object.owner = Some(owner);
+        object.object_type = Some(EXPECTED_TYPE.to_owned());
+        object.contents = Some(bcs_contents);
+        object
     }
 
     fn hex_id(byte: u8) -> String {
@@ -384,10 +383,10 @@ mod tests {
     }
 
     fn page(objects: Vec<Object>, token: Option<&[u8]>) -> ListOwnedObjectsResponse {
-        ListOwnedObjectsResponse {
-            objects,
-            next_page_token: token.map(|value| value.to_vec()),
-        }
+        let mut response = ListOwnedObjectsResponse::default();
+        response.objects = objects;
+        response.next_page_token = token.map(|value| value.to_vec().into());
+        response
     }
 
     fn limits() -> InventoryLimits {
@@ -461,10 +460,9 @@ mod tests {
     #[tokio::test]
     async fn malformed_bcs_fails_closed() {
         let mut malformed = object(6, 1);
-        malformed.contents = Some(Bcs {
-            name: None,
-            value: Some(b"bad".to_vec().into()),
-        });
+        let mut malformed_contents = Bcs::default();
+        malformed_contents.value = Some(b"bad".to_vec().into());
+        malformed.contents = Some(malformed_contents);
         let mut mock = source(vec![Ok(page(vec![malformed], None))]);
         assert!(
             collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits())
