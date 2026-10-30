@@ -11,3 +11,4 @@ serde_json = "1.0"
 
 [dev-dependencies]
 sui-grpc-inventory = { path = "../sui-grpc-inventory" }
+tokio = { version = "1.40", features = ["macros", "rt-multi-thread"] }
