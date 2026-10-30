@@ -195,33 +195,33 @@ mod tests {
             }
 
             let mut response = ListOwnedObjectsResponse::default();
-            match (self.scenario, token.as_deref()) {
-                (PageScenario::TwoPages, None) => {
+            match self.scenario {
+                PageScenario::TwoPages if token.is_none() => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-object-1".to_owned());
                     response.objects.push(object);
                     response.next_page_token = Some(bytes::Bytes::from_static(b"page-2"));
                 }
-                (PageScenario::TwoPages, Some(b"page-2")) => {
+                PageScenario::TwoPages if token.as_deref() == Some(&b"page-2"[..]) => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-object-2".to_owned());
                     response.objects.push(object);
                 }
-                (PageScenario::EmptyMiddle, None) => {
+                PageScenario::EmptyMiddle if token.is_none() => {
                     response.next_page_token = Some(bytes::Bytes::from_static(b"page-2"));
                 }
-                (PageScenario::EmptyMiddle, Some(b"page-2")) => {
+                PageScenario::EmptyMiddle if token.as_deref() == Some(&b"page-2"[..]) => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-after-empty-page".to_owned());
                     response.objects.push(object);
                 }
-                (PageScenario::RepeatToken, None) => {
+                PageScenario::RepeatToken if token.is_none() => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-repeat-1".to_owned());
                     response.objects.push(object);
                     response.next_page_token = Some(bytes::Bytes::from_static(b"repeat"));
                 }
-                (PageScenario::RepeatToken, Some(b"repeat")) => {
+                PageScenario::RepeatToken if token.as_deref() == Some(&b"repeat"[..]) => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-repeat-2".to_owned());
                     response.objects.push(object);
