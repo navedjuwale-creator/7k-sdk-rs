@@ -21,7 +21,7 @@ permissions:
 
 concurrency:
   group: sui-grpc-readonly-spike-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   compile-and-test:
