@@ -65,3 +65,16 @@ The adapter:
 Local mock-gRPC regression tests cover normal two-page completion, repeated-token rejection, page-budget exhaustion, and a later-page RPC failure. The existing live testnet probe still uses the SDK's high-level stream and remains a bounded 1,000-object sample; it does not yet validate the direct adapter against testnet.
 
 **Integration boundary:** the adapter is a tested primitive, not yet a production collector. A production caller must construct the generated state client over an appropriately configured authenticated/TLS channel, choose a documented page budget and overall deadline, preserve all request filters across pages, and treat every error or exhausted budget as incomplete. No mainnet or user-wallet access is performed here.
+
+
+## Live bounded-adapter testnet probes
+
+The CI workflow now runs the direct bounded adapter against the public Sui testnet endpoint over TLS, independently of the SDK's high-level auto-paginating stream. Both probes use only the all-zero owner fixture and the SUI coin type. They do not inspect user wallets or construct transactions.
+
+The primary probe requests at most 10 objects per page and permits at most 2 pages, with a 30-second overall deadline and a 5-second connection timeout. It passes only when the RPC succeeds and either:
+- pagination naturally ends within the page budget; or
+- the adapter explicitly reports `PageLimitExceeded`, which is logged as `bounded_sample_not_complete`.
+
+A second probe uses a one-page budget to verify the same explicit incomplete outcome when another page exists. RPC errors, repeated continuation tokens, and timeouts fail the integration test. The request's owner, object type, and page size are held constant across pages by cloning the original request and changing only its continuation token.
+
+These live probes demonstrate that the bounded adapter can connect to testnet and enforce its page budget. They do not establish a complete inventory, snapshot consistency, indexing freshness, or production readiness. The existing high-level 1,000-object probe remains separate.
