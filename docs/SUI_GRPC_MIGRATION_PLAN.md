@@ -64,3 +64,15 @@ The current `Cargo.toml` on the existing pagination-hardening branch still pins 
 - Every error, timeout, malformed response, repeated token, duplicate ID or limit breach fails closed.
 - Tests prove that no partial inventory is returned as success.
 - No signing, transaction submission, or writes occur.
+
+## Stage 1 implementation result
+
+- Implemented as an isolated library crate at `crates/sui-grpc-inventory`, using Mysten `sui-rpc = 0.4.0`.
+- The adapter builds a client only from an explicit HTTPS endpoint, requests `Coin<T>` objects with an explicit field mask, validates owner/type/object ID/version/digest, and strictly decodes the BCS `(ID, balance)` layout.
+- Pagination remains fail-closed with a 30-second absolute deadline, page size 1,000, 100-page cap, 10,000-object cap, empty-page continuation, duplicate ID/token detection, checked balance arithmetic, and insufficient-inventory errors.
+- Deterministic mock page-source tests cover multiple pages, empty intermediate pages, RPC errors, deadline expiry, malformed/missing BCS, wrong type/owner, duplicate IDs, repeated/empty tokens, page/object caps, insufficient balance, and balance overflow.
+- CI run [41094471205](https://github.com/navedjuwale-creator/7k-sdk-rs/actions/runs/41094471205) passed formatting, `cargo check --all-targets`, and all 15 tests.
+- The adapter is intentionally not yet wired into the legacy application crate. A direct root dependency on `sui-rpc` exposed an upstream dependency incompatibility between the old pinned Sui SDK's `axum-server` and the newer resolved `hyper-util`; keeping Stage 1 standalone avoids changing the legacy transaction stack. The first integration attempt and its compile failure were removed from the root dependency graph.
+- These tests mock the page-source boundary; they do not yet prove live endpoint connectivity or a wire-level mock gRPC server. No live RPC call, signing, transaction construction, or broadcast was performed.
+
+Stage 1 exit criteria are met for the standalone read-only adapter and its deterministic mock tests. Stage 2 remains gated on separate authorization to continue the migration plan; do not change the transaction builder as part of this Stage 1 result.
