@@ -319,6 +319,7 @@ mod tests {
         FailOnSecondPage,
         RepeatToken,
         StallOnFirstPage,
+        OverfullPage,
     }
 
     #[derive(Clone)]
@@ -366,6 +367,13 @@ mod tests {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-after-empty-page".to_owned());
                     response.objects.push(object);
+                }
+                PageScenario::OverfullPage if token.is_none() => {
+                    let mut first = Object::default();
+                    first.object_id = Some("fixture-overfull-1".to_owned());
+                    let mut second = Object::default();
+                    second.object_id = Some("fixture-overfull-2".to_owned());
+                    response.objects.extend([first, second]);
                 }
                 PageScenario::RepeatToken if token.is_none() => {
                     let mut object = Object::default();
@@ -556,6 +564,21 @@ mod tests {
         ).await;
         assert!(matches!(result, Err(PaginationError::TotalObjectLimitExceeded { max_objects: 1, actual: 2 })));
         assert_eq!(seen.lock().expect("request log lock").len(), 2);
+        let _ = shutdown.send(());
+    }
+
+    #[tokio::test]
+    async fn bounded_adapter_rejects_server_page_larger_than_requested_limit() {
+        let (endpoint, seen, shutdown) = start_mock_server(PageScenario::OverfullPage).await;
+        let mut client = direct_state_client(endpoint).await;
+        let result = collect_owned_objects_bounded(
+            &mut client, fixture_request(), 2, 1, 10, Duration::from_secs(3),
+        ).await;
+        assert!(matches!(
+            result,
+            Err(PaginationError::PageObjectLimitExceeded { max_page_size: 1, actual: 2 })
+        ));
+        assert_eq!(seen.lock().expect("request log lock").len(), 1);
         let _ = shutdown.send(());
     }
 
