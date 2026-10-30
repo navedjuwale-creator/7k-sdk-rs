@@ -1,6 +1,6 @@
 # Stage 2 — Read-only Object and Network Compatibility Review
 
-Status: review complete; implementation intentionally not started. Stage 1 files and tests are unchanged.
+Status: Stage 2 read-only adapter implemented and CI-verified. The adapter remains isolated from the legacy transaction builder; no transaction construction, signing, broadcast, or writes were added.
 
 Reviewed branch: `migrate/sui-grpc-client`
 Reviewed HEAD before this document: `c9497cd384f5b63e74af56da7c735d6b01c7fe75`
@@ -104,6 +104,29 @@ This reinforces the need for explicit gRPC endpoint and chain identity configura
 - Maintained Rust SDK object owner model: https://github.com/MystenLabs/sui-rust-sdk/blob/master/crates/sui-sdk-types/src/object.rs
 - Sui Rust SDK status and JSON-RPC migration guidance: https://docs.sui.io/references/sdks/rust and https://docs.sui.io/references/sui-sdks
 
+## Stage 2 implementation result
+
+Implemented in `crates/sui-grpc-inventory/src/object.rs`, re-exported from the Stage 1 crate without changing its inventory implementation.
+
+- `SuiGrpcNetwork::new` requires an HTTPS endpoint and an explicit expected chain ID.
+- `SuiGrpcObjectReader::connect` calls `LedgerService.GetServiceInfo` with a 10-second deadline and refuses missing, malformed, or mismatched chain IDs.
+- `get_object` uses `LedgerService.GetObject` with an explicit field mask for object ID, version, digest, owner, and object type.
+- `get_object_with_contents` opts into raw BCS contents; the default read does not request contents.
+- The neutral `SuiObjectRecord` binds every record to the verified chain ID and preserves object ID, version, digest, type, owner, and optional contents.
+- `SuiOwner` preserves Address, Object, Shared (exact initial shared version), Immutable, and ConsensusAddress (address and exact start version).
+- Missing required metadata, malformed IDs, unsupported owner kinds, unexpected owner metadata, zero versions, object-ID mismatch, missing requested contents, RPC errors, and deadlines fail closed.
+- No conversion to legacy `ObjectArg`/`ObjectRef`, no PTB builder integration, and no transaction-facing APIs were added.
+
+### CI verification
+
+- Stage 2 workflow [41098269748](https://github.com/navedjuwale-creator/7k-sdk-rs/actions/runs/41098269748): passed formatting, `cargo check --all-targets`, and all 28 tests (0 failed).
+- Stage 1 workflow [41098269818](https://github.com/navedjuwale-creator/7k-sdk-rs/actions/runs/41098269818): passed formatting, `cargo check --all-targets`, and all 28 tests (0 failed). This confirms the existing inventory adapter remains green alongside Stage 2.
+- Tests use deterministic mocked service responses. No live gRPC endpoint connectivity or live object lookup has been demonstrated.
+
+### Remaining boundary
+
+This work adds a safe gRPC network/object adapter, but it does not alter the legacy application's `get_sui_client` network-selection behavior or its legacy object-reference helpers. Those remain identified integration risks and are deliberately untouched until a separately tested migration step can consume this neutral read-only model. The legacy PTB layer remains unchanged.
+
 ## Recommendation
 
-Proceed with a narrowly scoped Stage 2 read-only adapter and network identity handshake, starting with tests for all five owner kinds and chain-ID mismatch. Do not touch the existing legacy PTB layer until this boundary is proven.
+Preserve this passing Stage 2 baseline. Next, add focused contract tests for the public object-read request/field-mask behavior and verify the endpoint against an explicitly selected read-only test network. Do not wire the adapter into the legacy PTB layer until those checks pass.
