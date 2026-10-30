@@ -53,7 +53,17 @@ The gRPC adapter remains a separate crate, `crates/sui-grpc-inventory`, with `su
 
 The root lockfile contains the legacy SDK graph (including `axum-server` and `hyper-util`) but no `sui-rpc` package. The adapter has its own manifest. A previous root-level attempt to combine the gRPC dependency with the legacy SDK encountered an upstream dependency-resolution conflict involving `axum-server` / `hyper-util`; this is a recorded prior integration result, not a fresh claim that every isolated arrangement is impossible.
 
-**Not yet proven:** whether one isolated crate can compile against both `sui-rpc = 0.4.0` and the exact `sui-sdk` 1.39.3 dependency graph without conflict. No combined-dependency compile probe has been run in this investigation.
+### Combined dependency CI probe — failed
+
+A dedicated isolated probe was run on branch `test/sui-grpc-legacy-sdk-compat`, commit `df820cd5c3e1b3ecbc7e96bf4d97227852214b3d`.
+
+Workflow: [CI run 41106365598](https://github.com/navedjuwale-creator/7k-sdk-rs/actions/runs/41106365598)
+
+The probe included both `sui-rpc = 0.4.0` and the exact `sui-sdk` / `sui_types` tag `testnet-v1.39.3`. It reused the repository's root lockfile to avoid the unrelated yanked-`core2` resolution failure encountered in the first attempt.
+
+Dependency resolution proceeded, but compilation failed inside the upstream pinned `axum-server` dependency. Rust reported that the associated `BodyData` type did not satisfy `bytes::Buf` at calls to `hyper_util::server::conn::auto::Builder::serve_connection_with_upgrades` (`axum-server` source `server.rs`, around lines 202 and 205). The failing package is upstream `axum-server v0.6.1`, pulled from the Sui tag's pinned git revision. The probe did not reach compilation of the pure conversion module or its unit tests.
+
+**Interpretation:** the combined dependency graph is not currently buildable in this pinned configuration under the CI toolchain. This is concrete evidence of an upstream dependency/toolchain incompatibility, not a failed conversion assertion and not proof that the conversion logic itself is wrong. Do not work around it by arbitrarily upgrading `hyper-util`, patching upstream crates, or changing the production SDK pins as part of this recovery step.
 
 ## 4. Decision
 
@@ -64,8 +74,10 @@ A narrow pure conversion boundary is source-feasible for:
 
 Object-owned and ConsensusV2 records remain rejected. The existence of `ObjectArg::Receiving` is not sufficient evidence to enable object-owned conversion.
 
-However, do not add the conversion module to the live gRPC adapter until a dedicated CI compatibility probe proves that the adapter can compile with both dependency families. This is the next gate. The probe must not create or build a transaction; it should only compile typed conversion code and run deterministic unit tests.
+However, the combined dependency probe failed inside upstream `axum-server` before reaching the conversion module. Do not add the conversion module to the live gRPC adapter and do not force the dependency graph with ad hoc upgrades or patches.
+
+Recommended architecture: keep the read-only gRPC adapter and legacy transaction SDK as separate dependency domains. If typed conversion is later required, introduce a narrow, versioned neutral-record boundary (data-only object ID/version/digest/owner fields) and perform conversion in a component that depends only on the legacy SDK. Prove the handoff contract with serialization/schema tests and keep each dependency domain independently buildable. No transaction construction is part of this next design gate.
 
 ## 5. Safety boundary
 
-This investigation changed no source code and no dependency manifests. No transaction was constructed, simulated, signed, or broadcast. No on-chain write was attempted. No PR or merge was created. Production `main` remains untouched.
+The compatibility probe exists only on branch `test/sui-grpc-legacy-sdk-compat`; it does not modify the production inventory adapter or root dependency manifest. The failed run reached upstream dependency compilation but not the conversion tests. No transaction was constructed, simulated, signed, or broadcast. No on-chain write was attempted. No PR or merge was created. Production `main` remains untouched.
