@@ -455,7 +455,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires public Sui Testnet gRPC connectivity"]
     async fn live_testnet_probe_reports_chain_identity() {
-        let client = sui_rpc::Client::new("https://fullnode.testnet.sui.io:443").unwrap();
+        let mut client = sui_rpc::Client::new("https://fullnode.testnet.sui.io:443").unwrap();
         let info = client
             .ledger_client()
             .get_service_info(GetServiceInfoRequest::default())
