@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use std::{collections::HashSet, time::Duration};
 use sui_sdk::{
     rpc_types::Coin,
