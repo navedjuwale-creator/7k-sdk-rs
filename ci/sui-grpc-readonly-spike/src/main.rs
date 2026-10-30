@@ -293,17 +293,25 @@ mod tests {
             scenario,
             seen_tokens: seen_tokens.clone(),
         };
+        // Keep the already-bound listener and hand it to tonic. Dropping it
+        // before the server task binds the same address creates a race where
+        // clients can connect before the server is listening.
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind local mock gRPC server");
         let address = listener.local_addr().expect("local server address");
-        drop(listener);
+        let incoming = futures_util::stream::unfold(listener, |listener| async move {
+            match listener.accept().await {
+                Ok((stream, _)) => Some((Ok::<_, std::io::Error>(stream), listener)),
+                Err(error) => Some((Err(error), listener)),
+            }
+        });
 
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         tokio::spawn(async move {
             tonic::transport::Server::builder()
                 .add_service(StateServiceServer::new(service))
-                .serve_with_shutdown(address, async {
+                .serve_with_incoming_shutdown(incoming, async {
                     let _ = shutdown_rx.await;
                 })
                 .await
