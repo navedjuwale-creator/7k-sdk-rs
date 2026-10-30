@@ -31,5 +31,15 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
+      - name: Trace advisory dependency parents
+        shell: bash
+        run: |
+          set +e
+          for crate in aes-gcm bytes crossbeam-epoch crypto-bigint h2 idna protobuf quick-xml quinn-proto ring rsa rustls rustls-webpki time webpki-roots zstd zstd-safe zstd-sys anyhow cxx im keccak lru rand sized-chunks core2 futures-util spin rustls-pemfile; do
+            echo "::group::Reverse dependency tree: ${crate}"
+            cargo tree --locked --invert "${crate}"
+            echo "::endgroup::"
+          done
+
       - name: Audit locked dependencies
         run: cargo audit
