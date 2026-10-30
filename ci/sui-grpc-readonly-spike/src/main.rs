@@ -196,7 +196,7 @@ mod tests {
 
             let mut response = ListOwnedObjectsResponse::default();
             match self.scenario {
-                PageScenario::TwoPages if token.is_none() => {
+                PageScenario::TwoPages | PageScenario::FailOnSecondPage if token.is_none() => {
                     let mut object = Object::default();
                     object.object_id = Some("fixture-object-1".to_owned());
                     response.objects.push(object);
