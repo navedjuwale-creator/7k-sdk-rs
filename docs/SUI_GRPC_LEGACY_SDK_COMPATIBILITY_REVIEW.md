@@ -81,3 +81,26 @@ Recommended architecture: keep the read-only gRPC adapter and legacy transaction
 ## 5. Safety boundary
 
 The compatibility probe exists only on branch `test/sui-grpc-legacy-sdk-compat`; it does not modify the production inventory adapter or root dependency manifest. The failed run reached upstream dependency compilation but not the conversion tests. No transaction was constructed, simulated, signed, or broadcast. No on-chain write was attempted. No PR or merge was created. Production `main` remains untouched.
+
+
+## 6. Dependency-neutral record boundary follow-up
+
+To avoid forcing the incompatible dependency graphs into one crate, an independent contract crate was added on branch `test/sui-neutral-object-boundary`:
+
+- `crates/sui-neutral-object-boundary/Cargo.toml`
+- `crates/sui-neutral-object-boundary/src/lib.rs`
+- `.github/workflows/sui-neutral-object-boundary.yml`
+
+The crate depends only on `serde` and `serde_json`; it has no `sui-rpc` or `sui-sdk` dependency. It defines schema version 1 and a neutral record carrying verified chain ID, canonical 32-byte object ID, version, digest string, object type, the full owner variant (address, object, shared, immutable, ConsensusV2), and optional base64-encoded BCS contents.
+
+Structural validation rejects unsupported schema versions, empty chain IDs/digests/types, noncanonical object IDs, zero object versions, invalid owner IDs, zero shared/consensus start versions, and empty optional content payloads. Serde rejects unknown fields. Round-trip tests cover every owner variant and optional contents.
+
+CI: [run 41107800314](https://github.com/navedjuwale-creator/7k-sdk-rs/actions/runs/41107800314) passed formatting, independent compilation, and all 7 contract tests.
+
+**Important validation boundary:** schema validation checks that the chain ID and digest are nonempty, but does not independently prove chain identity or decode/cryptographically validate the base58 digest. Those remain the responsibility of the producing gRPC adapter and the consuming SDK adapter. The BCS field is an opaque base64 string at this layer; strict base64 decoding and BCS type decoding belong at the appropriate adapter boundary.
+
+This is a contract-only checkpoint. The gRPC producer does not yet serialize this schema, and the legacy SDK consumer does not yet deserialize or convert it. No dependency graph is combined, no transaction argument is built, and no transaction-layer code is changed.
+
+## 7. Next gate
+
+Implement producer-side mapping from `SuiObjectRecord` to schema v1 and independent consumer-side parsing/validation in separate dependency domains. Keep those as two separately buildable crates/workflows. Verify identical JSON fixtures across both sides, including exact chain ID, object reference, owner metadata, and optional BCS bytes. Only after that should a later proposal consider pure legacy conversion; transaction construction remains out of scope.
