@@ -33,14 +33,18 @@ fn validate_page(
     seen_cursors: &mut HashSet<String>,
 ) -> Result<PageAction> {
     if page_len > COIN_PAGE_SIZE {
-        bail!("Coin inventory page {page_number} exceeded requested page size; inventory is incomplete");
+        bail!(
+            "Coin inventory page {page_number} exceeded requested page size; inventory is incomplete"
+        );
     }
 
     let new_total = accumulated_len
         .checked_add(page_len)
         .ok_or_else(|| anyhow!("Coin inventory object count overflow"))?;
     if new_total > MAX_COIN_OBJECTS {
-        bail!("Coin inventory exceeded the {MAX_COIN_OBJECTS}-object limit; inventory is incomplete");
+        bail!(
+            "Coin inventory exceeded the {MAX_COIN_OBJECTS}-object limit; inventory is incomplete"
+        );
     }
 
     if !has_next_page {
@@ -183,8 +187,8 @@ pub async fn get_coin_object_ids_by_amount(
 #[cfg(test)]
 mod tests {
     use super::{
-        insert_unique_coin_ids, select_coin_indices, validate_page, PageAction,
-        COIN_PAGE_SIZE, MAX_COIN_OBJECTS, MAX_COIN_PAGES,
+        COIN_PAGE_SIZE, MAX_COIN_OBJECTS, MAX_COIN_PAGES, PageAction, insert_unique_coin_ids,
+        select_coin_indices, validate_page,
     };
     use std::collections::HashSet;
 
@@ -218,25 +222,19 @@ mod tests {
     #[test]
     fn rejects_page_limit_before_following_another_page() {
         let mut seen = HashSet::new();
-        assert!(validate_page(
-            MAX_COIN_PAGES, 1, 0, true, Some("next".into()), &mut seen
-        ).is_err());
+        assert!(validate_page(MAX_COIN_PAGES, 1, 0, true, Some("next".into()), &mut seen).is_err());
     }
 
     #[test]
     fn rejects_object_limit() {
         let mut seen = HashSet::new();
-        assert!(validate_page(
-            1, 1, MAX_COIN_OBJECTS, false, None, &mut seen
-        ).is_err());
+        assert!(validate_page(1, 1, MAX_COIN_OBJECTS, false, None, &mut seen).is_err());
     }
 
     #[test]
     fn rejects_oversized_page() {
         let mut seen = HashSet::new();
-        assert!(validate_page(
-            1, COIN_PAGE_SIZE + 1, 0, false, None, &mut seen
-        ).is_err());
+        assert!(validate_page(1, COIN_PAGE_SIZE + 1, 0, false, None, &mut seen).is_err());
     }
 
     #[test]
