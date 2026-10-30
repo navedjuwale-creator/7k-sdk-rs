@@ -67,3 +67,8 @@ Additional regression tests verify that SUI route split amounts equal the reques
 and reject mismatch and arithmetic overflow. These tests do not establish that an eventual
 wallet-selected gas payment object has sufficient balance; that must be verified by the
 same transaction simulation and the wallet's final gas-payment selection.
+
+The gas estimator now propagates transaction-build and dev-inspect failures instead of
+reporting a zero fee for a failed simulation. Net gas cost uses checked addition and
+subtraction; malformed or overflowing cost summaries return an error. Regression tests
+cover successful rebate calculation, addition overflow, and rebate underflow.
