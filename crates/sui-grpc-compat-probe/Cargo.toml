@@ -1,0 +1,10 @@
+[package]
+name = "sui-grpc-legacy-sdk-compat"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+sui-rpc = "0.4.0"
+sui_types = { git = "https://github.com/mystenlabs/sui", tag = "testnet-v1.39.3", package = "sui-types" }
