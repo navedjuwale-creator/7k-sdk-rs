@@ -5,6 +5,7 @@ on:
     branches:
       - security/sui-grpc-readonly-spike
       - test/sui-bounded-pagination-testnet
+      - test/sui-bounded-pagination-deadline
     paths:
       - "ci/sui-grpc-readonly-spike/**"
       - ".github/workflows/sui-grpc-readonly-spike.yml"
@@ -44,5 +45,5 @@ jobs:
         run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_returns_bounded_owned_sui_coin_sample -- --ignored --exact --nocapture
 
       - name: Run bounded-adapter read-only testnet integration
-        if: github.event_name == 'push' && github.ref == 'refs/heads/test/sui-bounded-pagination-testnet'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/test/sui-bounded-pagination-deadline'
         run: cargo test --manifest-path ci/sui-grpc-readonly-spike/Cargo.toml tests::live_testnet_bounded_adapter_reaches_natural_end -- --ignored --exact --nocapture
