@@ -50,3 +50,18 @@ The fixture scenarios are:
 Inspection of the pinned upstream sui-rpc 0.4.0 client/lists.rs shows that list_owned_objects updates the request page_token from each response and continues while a token is present. The implementation does not maintain a set of previously observed tokens or otherwise visibly reject a repeated token. Therefore a server that repeats a token can cause the stream to continue issuing requests. The local repeated-token fixture is intended to reproduce and bound this condition.
 
 This is a pagination-progress risk in the SDK implementation. It is not evidence that Sui testnet currently returns repeated tokens. The spike does not modify upstream SDK code; any production mitigation should be designed and tested separately, with a strict request/page budget and an explicit incomplete/error outcome.
+
+
+## Bounded direct-pagination adapter
+
+A separate test adapter now calls the generated `StateServiceClient::list_owned_objects` unary RPC directly rather than using the SDK's opaque auto-paginating stream. This keeps the upstream `sui-rpc = 0.4.0` dependency unchanged while making page tokens visible to the collector.
+
+The adapter:
+- tracks previously submitted continuation tokens and rejects a repeated token;
+- enforces a caller-supplied maximum page count;
+- follows continuation tokens even when a page contains no objects;
+- returns an RPC error or explicit limit/cycle error rather than exposing accumulated objects as a successful complete result.
+
+Local mock-gRPC regression tests cover normal two-page completion, repeated-token rejection, page-budget exhaustion, and a later-page RPC failure. The existing live testnet probe still uses the SDK's high-level stream and remains a bounded 1,000-object sample; it does not yet validate the direct adapter against testnet.
+
+**Integration boundary:** the adapter is a tested primitive, not yet a production collector. A production caller must construct the generated state client over an appropriately configured authenticated/TLS channel, choose a documented page budget and overall deadline, preserve all request filters across pages, and treat every error or exhausted budget as incomplete. No mainnet or user-wallet access is performed here.
