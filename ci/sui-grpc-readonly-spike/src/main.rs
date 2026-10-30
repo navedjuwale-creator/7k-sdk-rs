@@ -254,9 +254,9 @@ mod tests {
                 PAGE_SIZE,
                 max_pages
             ),
-            Err(PaginationError::Rpc(status)) => return Err(Box::new(status)),
+            Err(PaginationError::Rpc(status)) => return Err(Box::new(status) as Box<dyn std::error::Error>),
             Err(PaginationError::RepeatedContinuationToken) => {
-                return Err("testnet repeated a continuation token".into());
+                return Err(Box::new(std::io::Error::other("testnet repeated a continuation token")) as Box<dyn std::error::Error>);
             }
         }
         Ok(())
