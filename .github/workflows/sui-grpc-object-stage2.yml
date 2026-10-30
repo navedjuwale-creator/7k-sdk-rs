@@ -38,5 +38,7 @@ jobs:
       - name: Run all unit tests
         run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
 
-      - name: Probe live Sui Testnet gRPC identity (read-only)
-        run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml live_testnet_probe_reports_chain_identity -- --ignored --nocapture
+      - name: Read live Sui Testnet object with pinned chain identity (read-only)
+        env:
+          SUI_TESTNET_EXPECTED_CHAIN_ID: 69WiPg3DAQiwdxfncX6wYQ2siKwAe6L9BZthQea3JNMD
+        run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml live_testnet_chain_identity_and_read_only_object_lookup -- --ignored --nocapture
