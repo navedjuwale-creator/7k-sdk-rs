@@ -8,6 +8,8 @@ publish = false
 anyhow = "1.0"
 async-trait = "0.1"
 bcs = "0.1.6"
+base64 = "0.22"
+sui-neutral-object-boundary = { path = "../sui-neutral-object-boundary" }
 prost-types = "0.14.1"
 sui-rpc = "0.4.0"
 tokio = { version = "1.40", features = ["time", "rt", "macros"] }
