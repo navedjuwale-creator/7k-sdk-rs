@@ -35,7 +35,8 @@ pub fn to_legacy_object_arg(
     sender: Option<&str>,
     shared_access: Option<SharedAccess>,
 ) -> Result<ObjectArg> {
-    let id = ObjectID::from_str(&record.object_id).map_err(|e| anyhow::anyhow!("invalid object ID: {e}"))?;
+    let id = ObjectID::from_str(&record.object_id)
+        .map_err(|e| anyhow::anyhow!("invalid object ID: {e}"))?;
     if record.version == 0 {
         bail!("object version must be nonzero");
     }
@@ -51,7 +52,9 @@ pub fn to_legacy_object_arg(
             }
             let owner = SuiAddress::from_str(owner)
                 .map_err(|e| anyhow::anyhow!("invalid address owner: {e}"))?;
-            let sender = sender.ok_or_else(|| anyhow::anyhow!("address-owned conversion requires an explicit sender"))?;
+            let sender = sender.ok_or_else(|| {
+                anyhow::anyhow!("address-owned conversion requires an explicit sender")
+            })?;
             let sender = SuiAddress::from_str(sender)
                 .map_err(|e| anyhow::anyhow!("invalid sender address: {e}"))?;
             if owner != sender {
@@ -65,19 +68,27 @@ pub fn to_legacy_object_arg(
             }
             Ok(ObjectArg::ImmOrOwnedObject(object_ref))
         }
-        NeutralOwner::Shared { initial_shared_version } => {
+        NeutralOwner::Shared {
+            initial_shared_version,
+        } => {
             if *initial_shared_version == 0 {
                 bail!("shared initial version must be nonzero");
             }
-            let access = shared_access.ok_or_else(|| anyhow::anyhow!("shared conversion requires explicit access intent"))?;
+            let access = shared_access.ok_or_else(|| {
+                anyhow::anyhow!("shared conversion requires explicit access intent")
+            })?;
             Ok(ObjectArg::SharedObject {
                 id,
                 initial_shared_version: SequenceNumber::from_u64(*initial_shared_version),
                 mutable: matches!(access, SharedAccess::Mutable),
             })
         }
-        NeutralOwner::Object(_) => bail!("object-owned conversion is unsupported pending Receiving semantics review"),
-        NeutralOwner::ConsensusV2 { .. } => bail!("ConsensusV2 conversion is unsupported because ObjectArg has no authenticator field"),
+        NeutralOwner::Object(_) => {
+            bail!("object-owned conversion is unsupported pending Receiving semantics review")
+        }
+        NeutralOwner::ConsensusV2 { .. } => bail!(
+            "ConsensusV2 conversion is unsupported because ObjectArg has no authenticator field"
+        ),
     }
 }
 
@@ -120,17 +131,27 @@ mod tests {
 
     #[test]
     fn shared_requires_explicit_access_and_preserves_initial_version() {
-        let value = record(NeutralOwner::Shared { initial_shared_version: 3 });
+        let value = record(NeutralOwner::Shared {
+            initial_shared_version: 3,
+        });
         assert!(to_legacy_object_arg(&value, None, None).is_err());
         match to_legacy_object_arg(&value, None, Some(SharedAccess::ReadOnly)).unwrap() {
-            ObjectArg::SharedObject { initial_shared_version, mutable, .. } => {
+            ObjectArg::SharedObject {
+                initial_shared_version,
+                mutable,
+                ..
+            } => {
                 assert_eq!(initial_shared_version.value(), 3);
                 assert!(!mutable);
             }
             other => panic!("unexpected argument: {other:?}"),
         }
         match to_legacy_object_arg(&value, None, Some(SharedAccess::Mutable)).unwrap() {
-            ObjectArg::SharedObject { initial_shared_version, mutable, .. } => {
+            ObjectArg::SharedObject {
+                initial_shared_version,
+                mutable,
+                ..
+            } => {
                 assert_eq!(initial_shared_version.value(), 3);
                 assert!(mutable);
             }
@@ -140,12 +161,25 @@ mod tests {
 
     #[test]
     fn unsupported_owner_kinds_fail_closed() {
-        assert!(to_legacy_object_arg(&record(NeutralOwner::Object(ADDRESS.to_owned())), None, None).is_err());
-        assert!(to_legacy_object_arg(
-            &record(NeutralOwner::ConsensusV2 { address: ADDRESS.to_owned(), start_version: 2 }),
-            None,
-            None
-        ).is_err());
+        assert!(
+            to_legacy_object_arg(
+                &record(NeutralOwner::Object(ADDRESS.to_owned())),
+                None,
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            to_legacy_object_arg(
+                &record(NeutralOwner::ConsensusV2 {
+                    address: ADDRESS.to_owned(),
+                    start_version: 2
+                }),
+                None,
+                None
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -153,7 +187,9 @@ mod tests {
         let mut value = record(NeutralOwner::Immutable);
         value.version = 0;
         assert!(to_legacy_object_arg(&value, None, None).is_err());
-        let shared = record(NeutralOwner::Shared { initial_shared_version: 0 });
+        let shared = record(NeutralOwner::Shared {
+            initial_shared_version: 0,
+        });
         assert!(to_legacy_object_arg(&shared, None, Some(SharedAccess::ReadOnly)).is_err());
     }
 }
