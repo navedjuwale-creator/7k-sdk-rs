@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use sui_sdk::SuiClient;
 use sui_sdk::rpc_types::SuiTransactionBlockEffects;
 use sui_sdk::types::base_types::SuiAddress;
@@ -31,7 +31,7 @@ pub async fn estimate_gas_fee(
         return Ok(0.0);
     }
 
-    let build_result = build_tx(
+    let (tx, _) = build_tx(
         client,
         config_manager,
         BuildTxParams {
@@ -45,15 +45,7 @@ pub async fn estimate_gas_fee(
             dev_inspect: Some(true),
         },
     )
-    .await;
-
-    let (tx, _) = match build_result {
-        Ok(result) => result,
-        Err(err) => {
-            println!("build tx error: {}", err);
-            return Ok(0.0);
-        }
-    };
+    .await?;
 
     let sui_price = match sui_price {
         Some(price) => price,
@@ -78,16 +70,48 @@ pub async fn estimate_gas_fee(
     let SuiTransactionBlockEffects::V1(effects) = &dev_inspect.effects;
     // let effects: &SuiTransactionBlockEffects = &dev_inspect.effects;
     if effects.status.is_err() {
-        return Ok(0.0);
+        return Err(anyhow!("Sui dev-inspect failed: {:?}", effects.status));
     }
 
     // let MyEnum::SingleVariant(inner) = value;
 
     let gas_used: &GasCostSummary = &effects.gas_used;
-    let fee = gas_used.computation_cost + gas_used.storage_cost - gas_used.storage_rebate;
+    let fee = calculate_net_gas_fee(
+        gas_used.computation_cost,
+        gas_used.storage_cost,
+        gas_used.storage_rebate,
+    )?;
 
     let fee_balance = format_balance(fee, sui_decimals);
     let fee_usd = (fee_balance as f64) * sui_price;
 
     Ok(fee_usd)
+}
+
+
+fn calculate_net_gas_fee(computation_cost: u64, storage_cost: u64, storage_rebate: u64) -> Result<u64> {
+    computation_cost
+        .checked_add(storage_cost)
+        .and_then(|gross| gross.checked_sub(storage_rebate))
+        .ok_or_else(|| anyhow!("Invalid or overflowing Sui gas cost summary"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calculate_net_gas_fee;
+
+    #[test]
+    fn calculates_net_gas_fee_with_rebate() {
+        assert_eq!(calculate_net_gas_fee(100, 50, 20).unwrap(), 130);
+    }
+
+    #[test]
+    fn rejects_gas_cost_addition_overflow() {
+        assert!(calculate_net_gas_fee(u64::MAX, 1, 0).is_err());
+    }
+
+    #[test]
+    fn rejects_rebate_larger_than_gross_cost() {
+        assert!(calculate_net_gas_fee(10, 5, 16).is_err());
+    }
 }
