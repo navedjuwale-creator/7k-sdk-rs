@@ -234,17 +234,31 @@ mod tests {
             Duration::from_secs(30),
             collect_owned_objects_bounded(&mut state_client, request, MAX_PAGES),
         )
-        .await??;
+        .await?;
 
-        println!(
-            "LIVE_BOUNDED_ADAPTER_OK endpoint={} owner={} object_type={} page_size={} max_pages={} sampled_objects={} completeness=complete_within_page_budget",
-            Client::TESTNET_FULLNODE,
-            FIXTURE_OWNER,
-            SUI_COIN_TYPE,
-            PAGE_SIZE,
-            MAX_PAGES,
-            result.len()
-        );
+        match result {
+            Ok(objects) => println!(
+                "LIVE_BOUNDED_ADAPTER_OK endpoint={} owner={} object_type={} page_size={} max_pages={} sampled_objects={} completeness=complete_before_page_cap",
+                Client::TESTNET_FULLNODE,
+                FIXTURE_OWNER,
+                SUI_COIN_TYPE,
+                PAGE_SIZE,
+                MAX_PAGES,
+                objects.len()
+            ),
+            Err(PaginationError::PageLimitExceeded { max_pages }) => println!(
+                "LIVE_BOUNDED_ADAPTER_OK endpoint={} owner={} object_type={} page_size={} max_pages={} completeness=bounded_sample_not_complete",
+                Client::TESTNET_FULLNODE,
+                FIXTURE_OWNER,
+                SUI_COIN_TYPE,
+                PAGE_SIZE,
+                max_pages
+            ),
+            Err(PaginationError::Rpc(status)) => return Err(Box::new(status)),
+            Err(PaginationError::RepeatedContinuationToken) => {
+                return Err("testnet repeated a continuation token".into());
+            }
+        }
         Ok(())
     }
 
