@@ -1,7 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use async_trait::async_trait;
 use prost_types::FieldMask;
-use serde::Deserialize;
 use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 use sui_rpc::{
@@ -86,9 +85,9 @@ impl CoinPageSource for SuiRpcCoinPageSource {
     ) -> Result<ListOwnedObjectsResponse> {
         self.client
             .state_client()
-            .list_owned_objects(tonic::Request::new(request))
+            .list_owned_objects(request)
             .await
-            .map(tonic::Response::into_inner)
+            .map(|response| response.into_inner())
             .context("Sui gRPC ListOwnedObjects request failed")
     }
 }
@@ -286,7 +285,6 @@ mod tests {
     };
     use anyhow::{Result, anyhow};
     use async_trait::async_trait;
-    use prost::bytes::Bytes;
     use std::{collections::VecDeque, time::Duration};
     use sui_rpc::proto::sui::rpc::v2::{
         Bcs, ListOwnedObjectsRequest, ListOwnedObjectsResponse, Object, Owner,
@@ -324,7 +322,7 @@ mod tests {
             digest: Some("mock-digest".to_owned()),
             owner: Some(Owner { kind: Some(1), address: Some(OWNER.to_owned()), version: None }),
             object_type: Some(EXPECTED_TYPE.to_owned()),
-            contents: Some(Bcs { name: None, value: Some(Bytes::from(contents)) }),
+            contents: Some(Bcs { name: None, value: Some(contents.into()) }),
             ..Default::default()
         }
     }
@@ -396,7 +394,7 @@ mod tests {
     #[tokio::test]
     async fn malformed_bcs_fails_closed() {
         let mut malformed = object(6, 1);
-        malformed.contents = Some(Bcs { name: None, value: Some(Bytes::from_static(b"bad")) });
+        malformed.contents = Some(Bcs { name: None, value: Some(b"bad".to_vec().into()) });
         let mut mock = source(vec![Ok(page(vec![malformed], None))]);
         assert!(collect_coin_inventory(&mut mock, OWNER, COIN_TYPE, 1, limits()).await.is_err());
     }
