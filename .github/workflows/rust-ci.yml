@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - fix/sui-network-config-mainnet-guard
+      - test/sui-network-env-selection
   pull_request:
   workflow_dispatch:
 
