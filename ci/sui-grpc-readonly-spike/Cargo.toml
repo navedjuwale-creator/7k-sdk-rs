@@ -7,4 +7,5 @@ publish = false
 [dependencies]
 futures-util = "0.3"
 sui-rpc = "=0.4.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "net", "sync"] }
+tonic = { version = "0.14.2", features = ["server", "router"] }
