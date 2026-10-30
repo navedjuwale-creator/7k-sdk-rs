@@ -1,0 +1,38 @@
+name: Sui gRPC neutral producer adapter
+
+on:
+  push:
+    branches:
+      - test/sui-grpc-neutral-producer
+    paths:
+      - "crates/sui-grpc-inventory/**"
+      - "crates/sui-neutral-object-boundary/**"
+      - ".github/workflows/sui-grpc-neutral-producer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-grpc-neutral-producer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  producer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format producer sources
+        run: rustfmt --edition 2024 --check crates/sui-grpc-inventory/src/lib.rs crates/sui-grpc-inventory/src/object.rs crates/sui-grpc-inventory/src/neutral.rs
+      - name: Compile producer dependency domain independently
+        run: cargo check --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
+      - name: Run producer mapping tests
+        run: cargo test --manifest-path crates/sui-grpc-inventory/Cargo.toml --all-targets
+      - name: Compile neutral schema independently
+        run: cargo check --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
+      - name: Run neutral schema contract tests
+        run: cargo test --manifest-path crates/sui-neutral-object-boundary/Cargo.toml --all-targets
