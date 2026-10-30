@@ -73,7 +73,9 @@ mod tests {
         let record = parse_neutral_json(&encoded).unwrap();
         assert_eq!(record.contents_bcs_base64.as_deref(), Some("AAEC/f7/"));
         assert_eq!(
-            STANDARD.decode(record.contents_bcs_base64.unwrap()).unwrap(),
+            STANDARD
+                .decode(record.contents_bcs_base64.unwrap())
+                .unwrap(),
             vec![0, 1, 2, 253, 254, 255]
         );
     }
