@@ -48,18 +48,33 @@ jobs:
           set +e
           : > dependency-paths.txt
           for package in \
-            'core2@0.4.0' \
-            'ethnum@1.3.2' \
+            'aes-gcm@0.10.1' \
             'bytes@1.8.0' \
+            'core2@0.4.0' \
+            'crossbeam-epoch@0.9.18' \
+            'crypto-bigint@0.4.9' \
+            'crypto-bigint@0.5.1' \
+            'ethnum@1.5.3' \
+            'futures-util@0.3.30' \
             'h2@0.3.26' \
             'h2@0.4.5' \
+            'idna@0.5.0' \
+            'protobuf@2.28.0' \
             'quick-xml@0.36.1' \
             'quinn-proto@0.11.8' \
+            'ring@0.16.20' \
+            'ring@0.17.8' \
+            'rsa@0.8.2' \
             'rustls@0.20.9' \
             'rustls@0.23.12' \
             'rustls-webpki@0.102.6' \
+            'spin@0.9.8' \
             'time@0.3.36' \
-            'zstd-safe@7.2.1'; do
+            'webpki-roots@0.22.6' \
+            'webpki-roots@0.26.3' \
+            'zstd@0.13.2' \
+            'zstd-safe@7.2.1' \
+            'zstd-sys@2.0.11+zstd.1.5.6'; do
             printf '\n===== %s =====\n' "$package" >> dependency-paths.txt
             cargo tree --locked --invert="$package" --edges normal,build,dev >> dependency-paths.txt 2>&1
           done
