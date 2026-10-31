@@ -1,0 +1,51 @@
+name: Dependency security baseline
+
+on:
+  push:
+    branches:
+      - security/clean-audit-baseline
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-audit:
+    name: Resolve and audit dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate a fresh dependency lockfile
+        run: cargo generate-lockfile
+
+      - name: Record resolved versions
+        run: |
+          cargo tree --locked --prefix none > dependency-tree.txt
+          grep -E '^(anyhow|quick-xml|object_store|quinn-proto|rustls|bytes) v' dependency-tree.txt || true
+          echo "Resolved dependency count:"
+          wc -l < dependency-tree.txt
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit the generated lockfile
+        run: cargo audit --file Cargo.lock
+
+      - name: Verify the resolved graph compiles
+        run: cargo check --locked
