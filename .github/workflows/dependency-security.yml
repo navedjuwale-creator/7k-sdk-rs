@@ -60,7 +60,7 @@ jobs:
             'time@0.3.36' \
             'zstd-safe@7.2.1'; do
             printf '\n===== %s =====\n' "$package" >> dependency-paths.txt
-            cargo tree --locked --invert --edges normal,build,dev "$package" >> dependency-paths.txt 2>&1
+            cargo tree --locked --invert="$package" --edges normal,build,dev >> dependency-paths.txt 2>&1
           done
           cat dependency-paths.txt
 
@@ -76,6 +76,17 @@ jobs:
         id: compile
         if: always()
         run: cargo check --locked
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-audit-evidence
+          path: |
+            dependency-tree.txt
+            dependency-paths.txt
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Preserve failing result if audit or compilation failed
         if: always()
