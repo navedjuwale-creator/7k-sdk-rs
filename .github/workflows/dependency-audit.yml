@@ -7,6 +7,12 @@ on:
     paths:
       - 'Cargo.lock'
       - '.github/workflows/dependency-audit.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'Cargo.lock'
+      - '.github/workflows/dependency-audit.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,7 +26,7 @@ jobs:
       - name: Check out audit branch
         uses: actions/checkout@v4
         with:
-          ref: security/audit-cargo-lockfile
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
       - name: Install cargo-audit
