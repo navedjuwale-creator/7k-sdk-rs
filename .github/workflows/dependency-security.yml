@@ -43,11 +43,46 @@ jobs:
           echo "Resolved dependency count:"
           wc -l < dependency-tree.txt
 
+      - name: Record inverse dependency paths for priority findings
+        run: |
+          set +e
+          : > dependency-paths.txt
+          for package in \
+            'core2@0.4.0' \
+            'bytes@1.8.0' \
+            'h2@0.3.26' \
+            'h2@0.4.5' \
+            'quick-xml@0.36.1' \
+            'quinn-proto@0.11.8' \
+            'rustls@0.20.9' \
+            'rustls@0.23.12' \
+            'rustls-webpki@0.102.6' \
+            'time@0.3.36' \
+            'zstd-safe@7.2.1'; do
+            printf '\n===== %s =====\n' "$package" >> dependency-paths.txt
+            cargo tree --locked --invert --edges normal,build,dev "$package" >> dependency-paths.txt 2>&1
+          done
+          cat dependency-paths.txt
+
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
       - name: Audit the seeded lockfile
+        id: audit
+        continue-on-error: true
         run: cargo audit --file Cargo.lock
 
-      - name: Verify the resolved graph compiles
+      - name: Verify the resolved graph compiles independently
+        id: compile
+        if: always()
         run: cargo check --locked
+
+      - name: Preserve failing result if audit or compilation failed
+        if: always()
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          echo "Audit outcome: $AUDIT_OUTCOME"
+          echo "Compile outcome: $COMPILE_OUTCOME"
+          test "$AUDIT_OUTCOME" = success && test "$COMPILE_OUTCOME" = success
