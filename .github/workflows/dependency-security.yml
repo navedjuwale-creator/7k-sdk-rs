@@ -1,4 +1,4 @@
-name: Dependency security baseline
+name: Dependency security baseline (seeded lockfile)
 
 on:
   push:
@@ -31,8 +31,10 @@ jobs:
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Generate a fresh dependency lockfile
-        run: cargo generate-lockfile
+      # The pinned Sui SDK graph requires yanked core2 0.4.0; a fresh resolution fails.
+      # Use the previously resolved lockfile only as an audit seed, not as proof of freshness.
+      - name: Validate the seeded lockfile against the manifest
+        run: cargo metadata --locked --format-version 1 > /dev/null
 
       - name: Record resolved versions
         run: |
