@@ -46,7 +46,7 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Audit the generated lockfile
+      - name: Audit the seeded lockfile
         run: cargo audit --file Cargo.lock
 
       - name: Verify the resolved graph compiles
