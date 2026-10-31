@@ -1,0 +1,29 @@
+name: Rust Dependency Audit
+
+on:
+  push:
+    branches:
+      - security/audit-cargo-lockfile
+    paths:
+      - 'Cargo.lock'
+      - '.github/workflows/dependency-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit locked Rust dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: security/audit-cargo-lockfile
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit committed lockfile against RustSec
+        run: cargo audit --file Cargo.lock
