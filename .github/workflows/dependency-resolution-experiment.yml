@@ -1,0 +1,113 @@
+name: Dependency resolution experiment (isolated)
+
+on:
+  push:
+    branches:
+      - experiment/dependency-resolution-2026-11-02
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Test ${{ matrix.package }} ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: quick-xml
+            version: "0.41.0"
+          - package: quinn-proto
+            version: "0.11.18"
+          - package: bytes
+            version: "1.11.1"
+    steps:
+      - name: Check out isolated experiment branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve one candidate without changing repository files
+        id: resolve
+        continue-on-error: true
+        env:
+          PACKAGE: ${{ matrix.package }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          set +e
+          cargo update -p "$PACKAGE" --precise "$VERSION" > resolution.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat resolution.log
+          exit "$rc"
+
+      - name: Validate candidate graph and record versions
+        if: steps.resolve.outcome == 'success'
+        id: graph
+        run: |
+          cargo metadata --locked --format-version 1 > metadata.json
+          cargo tree --locked --prefix none > dependency-tree.txt
+          grep -E '^(bytes|quick-xml|quinn-proto|rustls-webpki|zstd-safe|zstd-sys) v' dependency-tree.txt || true
+          sha256sum Cargo.lock > candidate-lockfile.sha256
+
+      - name: Audit candidate graph
+        if: steps.resolve.outcome == 'success'
+        id: audit
+        continue-on-error: true
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --file Cargo.lock > audit.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat audit.log
+          exit "$rc"
+
+      - name: Compile candidate graph
+        if: steps.resolve.outcome == 'success'
+        id: compile
+        continue-on-error: true
+        run: |
+          cargo check --locked > compile.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat compile.log
+          exit "$rc"
+
+      - name: Write experiment summary
+        if: always()
+        env:
+          PACKAGE: ${{ matrix.package }}
+          VERSION: ${{ matrix.version }}
+          RESOLUTION_OUTCOME: ${{ steps.resolve.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          {
+            echo "candidate=$PACKAGE@$VERSION"
+            echo "resolution_outcome=$RESOLUTION_OUTCOME"
+            echo "audit_outcome=$AUDIT_OUTCOME"
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "Note: audit failure means remaining advisories; compile success alone is not a security pass."
+          } > experiment-summary.txt
+          cat experiment-summary.txt
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-experiment-${{ matrix.package }}
+          path: |
+            resolution.log
+            metadata.json
+            dependency-tree.txt
+            candidate-lockfile.sha256
+            audit.log
+            compile.log
+            experiment-summary.txt
+          if-no-files-found: warn
+          retention-days: 14
