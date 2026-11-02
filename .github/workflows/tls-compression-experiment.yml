@@ -1,0 +1,113 @@
+name: TLS and compression compatibility experiment
+
+on:
+  push:
+    branches:
+      - experiment/dependency-resolution-2026-11-02
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    name: Test ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: rustls-0.23.46
+            package: "rustls@0.23.12"
+            version: "0.23.46"
+          - label: zstd-0.13.4
+            package: "zstd"
+            version: "0.13.4"
+          - label: zstd-safe-7.4.0
+            package: "zstd-safe"
+            version: "7.4.0"
+          - label: zstd-sys-2.1.2
+            package: "zstd-sys"
+            version: "2.1.2"
+
+    steps:
+      - name: Check out isolated experiment branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve one TLS or compression candidate
+        id: resolve
+        continue-on-error: true
+        env:
+          PACKAGE: ${{ matrix.package }}
+          VERSION: ${{ matrix.version }}
+        run: |
+          set +e
+          cargo update -p "$PACKAGE" --precise "$VERSION" > resolution.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat resolution.log
+          exit "$rc"
+
+      - name: Validate and record candidate graph
+        if: steps.resolve.outcome == 'success'
+        id: graph
+        run: |
+          set +e
+          cargo metadata --locked --format-version 1 > metadata.json
+          metadata_rc=$?
+          cargo tree --locked --prefix none > dependency-tree.txt
+          tree_rc=$?
+          grep -E '^(rustls|rustls-webpki|webpki-roots|zstd|zstd-safe|zstd-sys) v' dependency-tree.txt || true
+          sha256sum Cargo.lock > candidate-lockfile.sha256
+          echo "metadata_exit_code=$metadata_rc" >> "$GITHUB_OUTPUT"
+          echo "tree_exit_code=$tree_rc" >> "$GITHUB_OUTPUT"
+          test "$metadata_rc" -eq 0 && test "$tree_rc" -eq 0
+
+      - name: Compile candidate graph
+        if: steps.resolve.outcome == 'success' && steps.graph.outcome == 'success'
+        id: compile
+        continue-on-error: true
+        run: |
+          set +e
+          cargo check --locked > compile.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat compile.log
+          exit "$rc"
+
+      - name: Write experiment summary
+        if: always()
+        env:
+          LABEL: ${{ matrix.label }}
+          RESOLUTION_OUTCOME: ${{ steps.resolve.outcome }}
+          GRAPH_OUTCOME: ${{ steps.graph.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          {
+            echo "candidate=$LABEL"
+            echo "resolution_outcome=$RESOLUTION_OUTCOME"
+            echo "graph_outcome=$GRAPH_OUTCOME"
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "Audit is deferred until compatible candidates are selected."
+          } > experiment-summary.txt
+          cat experiment-summary.txt
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tls-compression-${{ matrix.label }}
+          path: |
+            resolution.log
+            metadata.json
+            dependency-tree.txt
+            candidate-lockfile.sha256
+            compile.log
+            experiment-summary.txt
+          if-no-files-found: warn
+          retention-days: 14
