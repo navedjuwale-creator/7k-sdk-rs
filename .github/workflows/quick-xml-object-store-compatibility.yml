@@ -47,7 +47,7 @@ jobs:
           q = Path("/tmp/object_store-0.10.2/src/gcp/client.rs")
           src = q.read_text()
           old_decl = "InvalidPutResponse { source: quick_xml::de::DeError },"
-          new_decl = old_decl + "\\n    InvalidPutResponseSerialization { source: quick_xml::se::SeError },"
+          new_decl = old_decl + "\n    InvalidPutResponseSerialization { source: quick_xml::se::SeError },"
           if src.count(old_decl) != 1:
               raise SystemExit("STOP: expected exactly one deserialization error declaration; no source patch applied")
           src = src.replace(old_decl, new_decl, 1)
