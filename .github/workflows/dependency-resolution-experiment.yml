@@ -1,9 +1,6 @@
 name: Dependency resolution experiment (isolated)
 
 on:
-  push:
-    branches:
-      - experiment/dependency-resolution-2026-11-02
   workflow_dispatch:
 
 permissions:
