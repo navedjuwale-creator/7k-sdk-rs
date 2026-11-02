@@ -1,9 +1,6 @@
 name: TLS and compression compatibility experiment
 
 on:
-  push:
-    branches:
-      - experiment/dependency-resolution-2026-11-02
   workflow_dispatch:
 
 permissions:
