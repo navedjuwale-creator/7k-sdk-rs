@@ -1,0 +1,128 @@
+name: Combined dependency compatibility experiment
+
+on:
+  push:
+    branches:
+      - experiment/dependency-resolution-2026-11-02
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  combined:
+    name: Combined patched-candidate graph
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out isolated experiment branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve combined compatible candidates
+        id: resolve
+        continue-on-error: true
+        run: |
+          set +e
+          {
+            cargo update -p quinn --precise 0.11.12
+            rc=$?
+            if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+            cargo update -p bytes --precise 1.11.1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+            cargo update -p rustls@0.23.12 --precise 0.23.46
+            rc=$?
+            if [ "$rc" -ne 0 ]; then exit "$rc"; fi
+            cargo update -p zstd --precise 0.13.4
+            rc=$?
+            exit "$rc"
+          } > resolution.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat resolution.log
+          exit "$rc"
+
+      - name: Validate combined graph and record versions
+        if: steps.resolve.outcome == 'success'
+        id: graph
+        run: |
+          set +e
+          cargo metadata --locked --format-version 1 > metadata.json
+          metadata_rc=$?
+          cargo tree --locked --prefix none > dependency-tree.txt
+          tree_rc=$?
+          grep -E '^(bytes|quinn|quinn-proto|rustls|rustls-webpki|webpki-roots|zstd|zstd-safe|zstd-sys) v' dependency-tree.txt || true
+          sha256sum Cargo.lock > candidate-lockfile.sha256
+          echo "metadata_exit_code=$metadata_rc" >> "$GITHUB_OUTPUT"
+          echo "tree_exit_code=$tree_rc" >> "$GITHUB_OUTPUT"
+          test "$metadata_rc" -eq 0 && test "$tree_rc" -eq 0
+
+      - name: Audit combined candidate graph
+        if: steps.resolve.outcome == 'success' && steps.graph.outcome == 'success'
+        id: audit
+        continue-on-error: true
+        run: |
+          set +e
+          cargo install cargo-audit --locked > audit-install.log 2>&1
+          install_rc=$?
+          if [ "$install_rc" -ne 0 ]; then
+            echo "cargo-audit install failed with exit code $install_rc" > audit.log
+            cat audit-install.log
+            exit "$install_rc"
+          fi
+          cargo audit --file Cargo.lock > audit.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat audit.log
+          exit "$rc"
+
+      - name: Compile combined candidate graph
+        if: steps.resolve.outcome == 'success' && steps.graph.outcome == 'success'
+        id: compile
+        continue-on-error: true
+        run: |
+          set +e
+          cargo check --locked > compile.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat compile.log
+          exit "$rc"
+
+      - name: Write experiment summary
+        if: always()
+        env:
+          RESOLUTION_OUTCOME: ${{ steps.resolve.outcome }}
+          GRAPH_OUTCOME: ${{ steps.graph.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          {
+            echo "candidate=quinn-0.11.12+bytes-1.11.1+rustls-0.23.46+zstd-0.13.4"
+            echo "resolution_outcome=$RESOLUTION_OUTCOME"
+            echo "graph_outcome=$GRAPH_OUTCOME"
+            echo "audit_outcome=$AUDIT_OUTCOME"
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "Quick-xml 0.36.1 and core2 0.4.0 intentionally remain unchanged."
+          } > experiment-summary.txt
+          cat experiment-summary.txt
+
+      - name: Upload combined evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: combined-dependency-experiment
+          path: |
+            resolution.log
+            metadata.json
+            dependency-tree.txt
+            candidate-lockfile.sha256
+            audit-install.log
+            audit.log
+            compile.log
+            experiment-summary.txt
+          if-no-files-found: warn
+          retention-days: 14
