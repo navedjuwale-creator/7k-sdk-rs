@@ -1,9 +1,6 @@
 name: quick-xml compatibility with pinned object_store 0.10.2
 
 on:
-  push:
-    branches:
-      - experiment/dependency-resolution-2026-11-02
   workflow_dispatch:
 
 permissions:
