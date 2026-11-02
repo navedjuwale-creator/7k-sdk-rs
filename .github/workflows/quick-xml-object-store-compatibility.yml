@@ -33,10 +33,12 @@ jobs:
           for line in s.splitlines():
               if "quick-xml" in line:
                   print(line)
-          old = 'quick-xml = "0.36.1"'
-          if old not in s:
-              raise SystemExit("STOP: exact expected quick-xml declaration not found; no candidate patch applied")
-          p.write_text(s.replace(old, 'quick-xml = "0.41.0"', 1))
+          import re
+          pattern = r'(\\[dependencies\\.quick-xml\\]\\s*\\nversion\\s*=\\s*)"[^"]+"'
+          patched, count = re.subn(pattern, r'\\1"0.41.0"', s, count=1)
+          if count != 1:
+              raise SystemExit("STOP: could not isolate [dependencies.quick-xml] version; no candidate patch applied")
+          p.write_text(patched)
           print("Candidate patched only in /tmp: quick-xml = 0.41.0")
           PY
       - name: Apply temporary local crate override
