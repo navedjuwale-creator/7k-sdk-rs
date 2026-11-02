@@ -21,6 +21,8 @@ jobs:
             version: "0.41.0"
           - package: quinn-proto
             version: "0.11.18"
+          - package: quinn
+            version: "0.11.12"
           - package: bytes
             version: "1.11.1"
     steps:
@@ -60,7 +62,13 @@ jobs:
         id: audit
         continue-on-error: true
         run: |
+          set +e
           cargo install cargo-audit --locked
+          install_rc=$?
+          if [ "$install_rc" -ne 0 ]; then
+            echo "cargo-audit install failed with exit code $install_rc" > audit.log
+            exit "$install_rc"
+          fi
           cargo audit --file Cargo.lock > audit.log 2>&1
           rc=$?
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
@@ -72,6 +80,7 @@ jobs:
         id: compile
         continue-on-error: true
         run: |
+          set +e
           cargo check --locked > compile.log 2>&1
           rc=$?
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
