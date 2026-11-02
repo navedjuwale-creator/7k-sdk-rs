@@ -1,6 +1,11 @@
-name: quick-xml compatibility with pinned object_store 0.10.2
+name: quick-xml compatibility with pinned object_store 0.10.2 (temporary error-type correction)
 
 on:
+  push:
+    branches:
+      - experiment/dependency-resolution-2026-11-02
+    paths:
+      - .github/workflows/quick-xml-object-store-compatibility.yml
   workflow_dispatch:
 
 permissions:
@@ -37,6 +42,16 @@ jobs:
               raise SystemExit("STOP: could not isolate [dependencies.quick-xml] version; no candidate patch applied")
           p.write_text(patched)
           print("Candidate patched only in /tmp: quick-xml = 0.41.0")
+          # quick-xml 0.40+ separates serialization SeError from deserialization DeError.
+          # object_store 0.10.2 applies InvalidPutResponseSnafu to a serialization result.
+          q = Path("/tmp/object_store-0.10.2/src/gcp/client.rs")
+          src = q.read_text()
+          old = "InvalidPutResponse { source: quick_xml::de::DeError }"
+          new = "InvalidPutResponse { source: quick_xml::se::SeError }"
+          if src.count(old) != 1:
+              raise SystemExit("STOP: expected exactly one InvalidPutResponse error-type declaration; no source patch applied")
+          q.write_text(src.replace(old, new, 1))
+          print("Candidate patched only in /tmp: InvalidPutResponse source type DeError -> SeError")
           PY
       - name: Apply temporary local crate override
         run: |
@@ -62,6 +77,9 @@ jobs:
         continue-on-error: true
         run: |
           set +e
+          cargo tree --locked -i snafu > snafu-tree.txt 2>&1
+          cargo tree --locked -i quick-xml > quick-xml-tree.txt 2>&1
+          cp Cargo.lock candidate-Cargo.lock
           cargo check --locked > compile.log 2>&1
           rc=$?
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
@@ -74,7 +92,7 @@ jobs:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
         run: |
           {
-            echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 dependency patch"
+            echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 and serialization error-type correction"
             echo "resolution_outcome=$RESOLUTION_OUTCOME"
             echo "compile_outcome=$COMPILE_OUTCOME"
             echo "No Cargo.toml or Cargo.lock changes are committed by this workflow."
@@ -90,5 +108,8 @@ jobs:
             resolution.log
             compile.log
             probe-summary.txt
+            candidate-Cargo.lock
+            snafu-tree.txt
+            quick-xml-tree.txt
           if-no-files-found: warn
           retention-days: 14
