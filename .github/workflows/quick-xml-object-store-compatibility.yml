@@ -96,17 +96,49 @@ jobs:
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           cat compile.log
           exit "$rc"
+      - name: Audit candidate lockfile
+        if: steps.compile.outcome == 'success'
+        id: audit
+        continue-on-error: true
+        run: |
+          set +e
+          cargo install cargo-audit --locked > audit-install.log 2>&1
+          install_rc=$?
+          if [ "$install_rc" -ne 0 ]; then
+            echo "install_exit_code=$install_rc" > audit-summary.txt
+            cat audit-install.log
+            exit "$install_rc"
+          fi
+          cargo audit --file candidate-Cargo.lock --json > audit.json 2> audit.log
+          rc=$?
+          echo "exit_code=$rc" > audit-summary.txt
+          cat audit.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("audit.json")
+          try:
+              data=json.loads(p.read_text())
+              vuln=data.get("vulnerabilities", {})
+              print("vulnerability_count=", vuln.get("count", "unknown"))
+              print("warning_count=", len(data.get("warnings", {}).get("unmaintained", [])) + len(data.get("warnings", {}).get("unsound", [])) + len(data.get("warnings", {}).get("yanked", [])))
+          except Exception as e:
+              print("Could not parse cargo-audit JSON:", e)
+          PY
+          exit "$rc"
       - name: Write summary and restore tracked manifest
         if: always()
         env:
           RESOLUTION_OUTCOME: ${{ steps.resolve.outcome }}
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
         run: |
           {
             echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 and separate deserialization/serialization error variants"
             echo "resolution_outcome=$RESOLUTION_OUTCOME"
             echo "compile_outcome=$COMPILE_OUTCOME"
-            if [ "$COMPILE_OUTCOME" = "success" ]; then echo "next=run fresh cargo audit on candidate lockfile"; else echo "next=inspect compiler output; do not run audit as acceptance evidence"; fi
+            echo "audit_outcome=$AUDIT_OUTCOME"
+            if [ "$COMPILE_OUTCOME" = "success" ] && [ "$AUDIT_OUTCOME" = "success" ]; then echo "next=review candidate audit findings against baseline; still temporary only"; elif [ "$COMPILE_OUTCOME" = "success" ]; then echo "next=review audit output; candidate not accepted"; else echo "next=inspect compiler output; do not run audit as acceptance evidence"; fi
             echo "No Cargo.toml or Cargo.lock changes are committed by this workflow."
           } > probe-summary.txt
           git checkout -- Cargo.toml
@@ -119,6 +151,10 @@ jobs:
           path: |
             resolution.log
             compile.log
+            audit-install.log
+            audit.json
+            audit.log
+            audit-summary.txt
             probe-summary.txt
             candidate-Cargo.lock
             snafu-tree.txt
