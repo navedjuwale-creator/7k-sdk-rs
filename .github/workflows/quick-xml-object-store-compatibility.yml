@@ -96,6 +96,13 @@ jobs:
           echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
           cat compile.log
           exit "$rc"
+      - name: Check out security baseline lockfile for same-database comparison
+        if: steps.compile.outcome == 'success'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: security/clean-audit-baseline
+          path: baseline-checkout
+          persist-credentials: false
       - name: Audit candidate lockfile
         if: steps.compile.outcome == 'success'
         id: audit
@@ -109,23 +116,35 @@ jobs:
             cat audit-install.log
             exit "$install_rc"
           fi
+          cp baseline-checkout/Cargo.lock baseline-Cargo.lock
           cargo audit --file candidate-Cargo.lock --json > audit.json 2> audit.log
-          rc=$?
-          echo "exit_code=$rc" > audit-summary.txt
+          candidate_rc=$?
+          cargo audit --file baseline-Cargo.lock --json > baseline-audit.json 2> baseline-audit.log
+          baseline_rc=$?
+          printf "candidate_exit_code=%s\\nbaseline_exit_code=%s\\n" "$candidate_rc" "$baseline_rc" > audit-summary.txt
           cat audit.log
+          cat baseline-audit.log
           python3 - <<'PY'
           import json
           from pathlib import Path
-          p=Path("audit.json")
-          try:
-              data=json.loads(p.read_text())
-              vuln=data.get("vulnerabilities", {})
-              print("vulnerability_count=", vuln.get("count", "unknown"))
-              print("warning_count=", len(data.get("warnings", {}).get("unmaintained", [])) + len(data.get("warnings", {}).get("unsound", [])) + len(data.get("warnings", {}).get("yanked", [])))
-          except Exception as e:
-              print("Could not parse cargo-audit JSON:", e)
+          def summarize(path):
+              try:
+                  d=json.loads(Path(path).read_text())
+                  v=d.get("vulnerabilities", {})
+                  w=d.get("warnings", {})
+                  return {
+                      "vulnerabilities": v.get("count", "unknown"),
+                      "unmaintained": len(w.get("unmaintained", [])),
+                      "unsound": len(w.get("unsound", [])),
+                      "yanked": len(w.get("yanked", [])),
+                      "quick_xml": [(x["package"]["version"], x["advisory"]["id"]) for x in v.get("list", []) if x["package"]["name"]=="quick-xml"],
+                  }
+              except Exception as e:
+                  return {"parse_error": str(e)}
+          print("candidate=", summarize("audit.json"))
+          print("baseline=", summarize("baseline-audit.json"))
           PY
-          exit "$rc"
+          if [ "$candidate_rc" -ne 0 ] || [ "$baseline_rc" -ne 0 ]; then exit 1; fi
       - name: Write summary and restore tracked manifest
         if: always()
         env:
@@ -154,6 +173,9 @@ jobs:
             audit-install.log
             audit.json
             audit.log
+            baseline-Cargo.lock
+            baseline-audit.json
+            baseline-audit.log
             audit-summary.txt
             probe-summary.txt
             candidate-Cargo.lock
