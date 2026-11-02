@@ -1,4 +1,4 @@
-name: quick-xml compatibility with pinned object_store 0.10.2 (temporary error-type correction)
+name: quick-xml compatibility with pinned object_store 0.10.2 (separate XML error variants)
 
 on:
   push:
@@ -43,15 +43,26 @@ jobs:
           p.write_text(patched)
           print("Candidate patched only in /tmp: quick-xml = 0.41.0")
           # quick-xml 0.40+ separates serialization SeError from deserialization DeError.
-          # object_store 0.10.2 applies InvalidPutResponseSnafu to a serialization result.
+          # Keep the existing deserialization variant and add a distinct serialization variant.
           q = Path("/tmp/object_store-0.10.2/src/gcp/client.rs")
           src = q.read_text()
-          old = "InvalidPutResponse { source: quick_xml::de::DeError }"
-          new = "InvalidPutResponse { source: quick_xml::se::SeError }"
-          if src.count(old) != 1:
-              raise SystemExit("STOP: expected exactly one InvalidPutResponse error-type declaration; no source patch applied")
-          q.write_text(src.replace(old, new, 1))
-          print("Candidate patched only in /tmp: InvalidPutResponse source type DeError -> SeError")
+          old_decl = "InvalidPutResponse { source: quick_xml::de::DeError },"
+          new_decl = old_decl + "\\n    InvalidPutResponseSerialization { source: quick_xml::se::SeError },"
+          if src.count(old_decl) != 1:
+              raise SystemExit("STOP: expected exactly one deserialization error declaration; no source patch applied")
+          src = src.replace(old_decl, new_decl, 1)
+          # Change only the context attached to the XML serialization operation.
+          starts = [i for i in (src.find("quick_xml::se::to_writer"), src.find("quick_xml::se::to_string")) if i >= 0]
+          if len(starts) != 1:
+              raise SystemExit("STOP: expected exactly one supported XML serialization call; no context patch applied")
+          pos = starts[0]
+          ctx = "InvalidPutResponseSnafu"
+          ctx_pos = src.find(ctx, pos)
+          if ctx_pos < 0 or src.find(ctx, ctx_pos + len(ctx)) >= 0:
+              raise SystemExit("STOP: could not isolate serialization context; no source patch applied")
+          src = src[:ctx_pos] + "InvalidPutResponseSerializationSnafu" + src[ctx_pos + len(ctx):]
+          q.write_text(src)
+          print("Candidate patched only in /tmp: separate DeError and SeError variants; serialization context changed only")
           PY
       - name: Apply temporary local crate override
         run: |
@@ -92,9 +103,10 @@ jobs:
           COMPILE_OUTCOME: ${{ steps.compile.outcome }}
         run: |
           {
-            echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 and serialization error-type correction"
+            echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 and separate deserialization/serialization error variants"
             echo "resolution_outcome=$RESOLUTION_OUTCOME"
             echo "compile_outcome=$COMPILE_OUTCOME"
+            if [ "$COMPILE_OUTCOME" = "success" ]; then echo "next=run fresh cargo audit on candidate lockfile"; else echo "next=inspect compiler output; do not run audit as acceptance evidence"; fi
             echo "No Cargo.toml or Cargo.lock changes are committed by this workflow."
           } > probe-summary.txt
           git checkout -- Cargo.toml
