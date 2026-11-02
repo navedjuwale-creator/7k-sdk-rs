@@ -1,0 +1,95 @@
+name: quick-xml compatibility with pinned object_store 0.10.2
+
+on:
+  push:
+    branches:
+      - experiment/dependency-resolution-2026-11-02
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  patched-transitive-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out isolated experiment branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Download exact object_store 0.10.2 source into temporary directory
+        run: |
+          set -eu
+          mkdir -p /tmp/object_store-0.10.2
+          curl --fail --silent --show-error --location https://crates.io/api/v1/crates/object_store/0.10.2/download -o /tmp/object_store.crate
+          tar -xzf /tmp/object_store.crate --strip-components=1 -C /tmp/object_store-0.10.2
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("/tmp/object_store-0.10.2/Cargo.toml")
+          s = p.read_text()
+          print("Original quick-xml declaration:")
+          for line in s.splitlines():
+              if "quick-xml" in line:
+                  print(line)
+          old = 'quick-xml = "0.36.1"'
+          if old not in s:
+              raise SystemExit("STOP: exact expected quick-xml declaration not found; no candidate patch applied")
+          p.write_text(s.replace(old, 'quick-xml = "0.41.0"', 1))
+          print("Candidate patched only in /tmp: quick-xml = 0.41.0")
+          PY
+      - name: Apply temporary local crate override
+        run: |
+          cat >> Cargo.toml <<'EOF'
+
+          # Temporary CI-only compatibility probe; never commit this override.
+          [patch.crates-io]
+          object_store = { path = "/tmp/object_store-0.10.2" }
+          EOF
+      - name: Resolve quick-xml 0.41 against the patched object_store 0.10.2
+        id: resolve
+        continue-on-error: true
+        run: |
+          set +e
+          cargo update -p quick-xml --precise 0.41.0 > resolution.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat resolution.log
+          exit "$rc"
+      - name: Compile temporary candidate graph
+        if: steps.resolve.outcome == 'success'
+        id: compile
+        continue-on-error: true
+        run: |
+          set +e
+          cargo check --locked > compile.log 2>&1
+          rc=$?
+          echo "exit_code=$rc" >> "$GITHUB_OUTPUT"
+          cat compile.log
+          exit "$rc"
+      - name: Write summary and restore tracked manifest
+        if: always()
+        env:
+          RESOLUTION_OUTCOME: ${{ steps.resolve.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          {
+            echo "candidate=object_store 0.10.2 with temporary quick-xml 0.41.0 dependency patch"
+            echo "resolution_outcome=$RESOLUTION_OUTCOME"
+            echo "compile_outcome=$COMPILE_OUTCOME"
+            echo "No Cargo.toml or Cargo.lock changes are committed by this workflow."
+          } > probe-summary.txt
+          git checkout -- Cargo.toml
+          cat probe-summary.txt
+      - name: Upload compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quick-xml-object-store-compatibility
+          path: |
+            resolution.log
+            compile.log
+            probe-summary.txt
+          if-no-files-found: warn
+          retention-days: 14
