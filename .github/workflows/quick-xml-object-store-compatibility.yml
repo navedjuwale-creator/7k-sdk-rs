@@ -34,8 +34,8 @@ jobs:
               if "quick-xml" in line:
                   print(line)
           import re
-          pattern = r'(\\[dependencies\\.quick-xml\\]\\s*\\nversion\\s*=\\s*)"[^"]+"'
-          patched, count = re.subn(pattern, r'\\1"0.41.0"', s, count=1)
+          pattern = r'(\[dependencies\.quick-xml\]\s*\nversion\s*=\s*)"[^"]+"'
+          patched, count = re.subn(pattern, r'\1"0.41.0"', s, count=1)
           if count != 1:
               raise SystemExit("STOP: could not isolate [dependencies.quick-xml] version; no candidate patch applied")
           p.write_text(patched)
