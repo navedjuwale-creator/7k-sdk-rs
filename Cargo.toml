@@ -37,3 +37,11 @@ package = "shared-crypto"
 git = "https://github.com/mystenlabs/sui"
 tag = "testnet-v1.41.0"
 package = "sui-transaction-builder"
+
+# Isolated compatibility probe: replace all four Sui-pinned Anemo workspace
+# crates with the coordinated upstream dependency update. No Sui tag changes.
+[patch."https://github.com/mystenlabs/anemo.git"]
+anemo = { git = "https://github.com/mystenlabs/anemo", rev = "9c52c3c7946532163a79129db15180cdb984bab4" }
+anemo-build = { git = "https://github.com/mystenlabs/anemo", rev = "9c52c3c7946532163a79129db15180cdb984bab4" }
+anemo-cli = { git = "https://github.com/mystenlabs/anemo", rev = "9c52c3c7946532163a79129db15180cdb984bab4" }
+anemo-tower = { git = "https://github.com/mystenlabs/anemo", rev = "9c52c3c7946532163a79129db15180cdb984bab4" }
