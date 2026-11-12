@@ -31,10 +31,9 @@ jobs:
           # These selectors target fixes that may fit existing parent ranges:
           # reqwest/url (HTTP, IDNA and roots), AES-GCM, bytes, crossbeam,
           # h2, Quinn, rustls, time, and zstd-safe.
-          # --precise applies to a single package selector, so pin roaring
-          # in its own invocation before refreshing the remaining families.
-          cargo update -p pin-project-lite --precise 0.2.17
-          cargo update -p roaring --precise 0.10.12
+          # Refresh both resolver blockers together so Cargo can select a
+          # single compatible graph for the Sui 1.41 dependency set.
+          cargo update -p pin-project-lite -p roaring
           cargo update \
             -p reqwest -p url \
             -p aes-gcm -p bytes \
