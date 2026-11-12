@@ -29,14 +29,9 @@ jobs:
           git clone --filter=blob:none https://github.com/mystenlabs/anemo ../anemo
           git -C ../anemo checkout 9c52c3c7946532163a79129db15180cdb984bab4
           # Preserve the baseline's bounded refresh; never run unrestricted cargo update.
-          # Raise the shared Sui roaring constraint before resolving WebPKI's newer PKI types.
-          cargo update -p roaring --precise 0.10.12
-          # reqwest permits this newer PKI types release required by WebPKI 0.103.
-          cargo update -p rustls-pki-types --precise 1.11.0
-          # Refresh remaining compatibility pins independently.
-          cargo update -p pin-project-lite
-          cargo update -p syn@2.0.79
-          cargo update -p jsonrpsee
+          # Resolve all known lockfile conflicts in one bounded Cargo solve.
+          # Multiple -p selectors are intentional; do not use unrestricted cargo update.
+          cargo update -p roaring -p pin-project-lite -p rustls-pki-types -p syn@2.0.79 -p jsonrpsee
           cargo metadata --format-version 1 > metadata.json
           cargo tree --prefix none > dependency-tree.txt
           cargo tree -i rustls-webpki@0.103.16 || true
