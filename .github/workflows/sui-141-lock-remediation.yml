@@ -34,7 +34,7 @@ jobs:
           cargo update \
             -p reqwest -p url \
             -p aes-gcm -p bytes \
-            -p crossbeam-epoch -p h2 \
+            -p crossbeam-epoch -p h2@0.3.26 -p h2@0.4.5 \
             -p quinn-proto -p ring@0.17.8 \
             -p rustls -p rustls-webpki@0.102.6 \
             -p webpki-roots -p time \
