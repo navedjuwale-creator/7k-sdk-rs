@@ -32,8 +32,20 @@ jobs:
       - name: Capture baseline
         run: |
           cp Cargo.lock Cargo.lock.before
+          cargo tree --locked --invert='quinn-proto@0.11.8' > quinn-proto-path-before.txt
+          cargo tree --locked --invert='quinn@0.11.2' > quinn-path-before.txt
           cargo tree --locked --invert='rustls-webpki@0.102.6' > rustls-webpki-path-before.txt
           cargo tree --locked --invert='rustls@0.23.12' > rustls-path-before.txt
+
+      # Materialize the already-validated Quinn pair as well as the TLS pair
+      # in this candidate lockfile. This PR must carry the actual lockfile delta,
+      # not only prove temporary updates inside the CI runner.
+      - name: Update Quinn transport pair
+        run: |
+          cargo update -p quinn --precise 0.11.12
+          cargo update -p quinn-proto --precise 0.11.19
+          cargo tree --locked -p quinn@0.11.12 | tee quinn-upgraded-tree.txt
+          grep -Fq 'quinn-proto v0.11.19' quinn-upgraded-tree.txt
 
       # Updating rustls resolves its compatible rustls-webpki dependency.
       # Older webpki versions may remain for unrelated dependents, so validate
@@ -46,6 +58,8 @@ jobs:
 
       - name: Record candidate delta
         run: |
+          cargo tree --locked --invert='quinn-proto@0.11.19' > quinn-proto-path-after.txt
+          cargo tree --locked --invert='quinn@0.11.12' > quinn-path-after.txt
           cargo tree --locked --invert='rustls-webpki@0.103.16' > rustls-webpki-path-after.txt
           cargo tree --locked --invert='rustls@0.23.46' > rustls-path-after.txt
           diff -u Cargo.lock.before Cargo.lock > Cargo.lock.diff || test "$?" -eq 1
@@ -75,6 +89,11 @@ jobs:
             Cargo.lock.before
             Cargo.lock
             Cargo.lock.diff
+            quinn-proto-path-before.txt
+            quinn-proto-path-after.txt
+            quinn-path-before.txt
+            quinn-path-after.txt
+            quinn-upgraded-tree.txt
             rustls-webpki-path-before.txt
             rustls-webpki-path-after.txt
             rustls-path-before.txt
