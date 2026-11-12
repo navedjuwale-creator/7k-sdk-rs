@@ -1,0 +1,75 @@
+name: Isolated quinn-proto remediation candidate
+
+on:
+  push:
+    branches:
+      - security/quinn-proto-isolated-candidate
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quinn-proto-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Update one transport dependency and verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Capture baseline
+        run: |
+          cp Cargo.lock Cargo.lock.before
+          cargo tree --locked --invert='quinn-proto@0.11.8' > quinn-proto-path-before.txt
+
+      - name: Update only quinn-proto
+        run: cargo update -p quinn-proto --precise 0.11.19
+
+      - name: Record candidate delta
+        run: |
+          cargo tree --locked --invert='quinn-proto@0.11.19' > quinn-proto-path-after.txt
+          diff -u Cargo.lock.before Cargo.lock > Cargo.lock.diff || test "$?" -eq 1
+          cargo tree --locked --prefix none > dependency-tree-after.txt
+          grep -E '^(quinn-proto|quinn|rustls|rustls-webpki|ring|bytes) v' dependency-tree-after.txt || true
+
+      - name: Verify lockfile and compile
+        run: |
+          cargo metadata --locked --format-version 1 > /dev/null
+          cargo check --locked
+
+      - name: Run focused tests
+        run: cargo test --locked
+
+      - name: Audit candidate lockfile
+        id: audit
+        continue-on-error: true
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit --file Cargo.lock
+
+      - name: Upload candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quinn-proto-isolated-candidate
+          path: |
+            Cargo.lock.before
+            Cargo.lock
+            Cargo.lock.diff
+            quinn-proto-path-before.txt
+            quinn-proto-path-after.txt
+            dependency-tree-after.txt
+          if-no-files-found: warn
+          retention-days: 14
