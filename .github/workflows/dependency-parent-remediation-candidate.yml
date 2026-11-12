@@ -1,0 +1,108 @@
+name: Transitive remediation dependency-parent candidate
+
+on:
+  push:
+    branches:
+      - security/transitive-remediation-parent-upgrades-candidate
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: transitive-parent-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Upgrade compatible dependency parents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out isolated candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Capture baseline
+        run: |
+          set -euo pipefail
+          cp Cargo.lock Cargo.lock.before
+          cargo tree --locked --prefix none > dependency-tree-before.txt
+
+      - name: Update compatible dependency parents
+        shell: bash
+        run: |
+          set -u
+          : > update-results.txt
+          while IFS= read -r package; do
+            [ -n "$package" ] || continue
+            echo "=== cargo update -p $package ===" | tee -a update-results.txt
+            if cargo update -p "$package" >> update-results.txt 2>&1; then
+              echo "RESULT: updated/resolved" | tee -a update-results.txt
+            else
+              status=$?
+              echo "RESULT: no compatible update (exit $status)" | tee -a update-results.txt
+            fi
+          done <<'PACKAGES'
+          reqwest
+          url
+          hyper-rustls
+          jsonrpsee
+          serde_with
+          rayon
+          async-compression
+          tower-http
+          object_store
+          prometheus
+          bytes
+          time
+          aes-gcm
+          crossbeam-epoch
+          zstd
+          PACKAGES
+          cargo metadata --locked --format-version 1 > metadata.json
+          cargo tree --locked --prefix none > dependency-tree-after.txt
+          diff -u Cargo.lock.before Cargo.lock > Cargo.lock.diff || test "$?" -eq 1
+
+      - name: Verify locked graph and compile
+        run: |
+          set -euo pipefail
+          cargo metadata --locked --format-version 1 > /dev/null
+          cargo check --locked
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Blocking security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --file Cargo.lock --json > cargo-audit.json
+          audit_status=$?
+          set -e
+          echo "$audit_status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$audit_status"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dependency-parent-remediation-evidence
+          path: |
+            Cargo.lock.before
+            Cargo.lock
+            Cargo.lock.diff
+            update-results.txt
+            metadata.json
+            dependency-tree-before.txt
+            dependency-tree-after.txt
+            cargo-audit.json
+            cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
