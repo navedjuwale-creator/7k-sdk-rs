@@ -26,10 +26,11 @@ jobs:
         run: |
           set -euo pipefail
           # Resolve the newer Sui SDK's shared roaring constraint before
-          # updating the remaining lock entry. Preserve the existing lockfile:
-          # it contains the already-yanked core2 0.4.0 required by multiaddr.
+          # allowing Cargo to select the newest compatible pin-project-lite.
+          # Preserve the existing lockfile because multiaddr requires the
+          # already-yanked core2 0.4.0 entry.
           cargo update -p roaring --precise 0.10.12
-          cargo update -p pin-project-lite --precise 0.2.17
+          cargo update -p pin-project-lite
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
