@@ -1,16 +1,16 @@
-name: Sui 1.41 targeted lock remediation candidate
+name: Sui upstream webpki security compatibility probe
 
 on:
   push:
     branches:
-      - security/sui-141-lock-remediation
+      - security/sui-upstream-webpki-probe
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sui-141-lock-remediation-${{ github.ref }}
+  group: sui-upstream-webpki-probe-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # This is a bounded lockfile-only remediation experiment.
+          # This is an isolated upstream-Sui compatibility and security probe.
           # Never run unrestricted cargo update: the existing lockfile
           # intentionally retains yanked core2 0.4.0 for multiaddr.
           # These selectors target fixes that may fit existing parent ranges:
@@ -45,8 +45,6 @@ jobs:
             -p zstd@0.13.2 -p zstd-safe -p zstd-sys
           # Move the remaining vulnerable rustls release to its patched 0.23 version.
           cargo update -p rustls@0.23.31 --precise 0.23.46
-          # Identify the parent that still pins the vulnerable 0.102 webpki line.
-          cargo tree -i rustls-webpki@0.102.6
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
