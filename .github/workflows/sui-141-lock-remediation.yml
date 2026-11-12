@@ -40,11 +40,13 @@ jobs:
             -p aes-gcm -p bytes \
             -p crossbeam-epoch -p h2@0.4.5 \
             -p quinn -p quinn-proto -p ring@0.17.8 \
-            -p rustls@0.23.31 -p rustls-webpki@0.102.6 \
+            -p rustls@0.23.31 \
             -p webpki-roots@0.26.3 -p time \
             -p zstd@0.13.2 -p zstd-safe -p zstd-sys
           # Move the remaining vulnerable rustls release to its patched 0.23 version.
           cargo update -p rustls@0.23.31 --precise 0.23.46
+          # Upgrade the remaining 0.102 webpki line to the patched compatible release.
+          cargo update -p rustls-webpki --precise 0.103.16
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
