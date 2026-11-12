@@ -29,9 +29,9 @@ jobs:
           # allowing Cargo to select compatible pin-project-lite and syn versions.
           # Preserve the existing lockfile because multiaddr requires the
           # already-yanked core2 0.4.0 entry.
-          # Unlock both constraints in one resolver pass; updating roaring alone
-          # still retains pin-project-lite 0.2.13 from the existing lockfile.
-          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn
+          # Unlock the selected syn v2 package explicitly; the lockfile also contains
+          # syn v0.15 and v1, so an unqualified package selector is ambiguous.
+          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
