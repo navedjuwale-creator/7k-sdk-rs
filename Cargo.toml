@@ -7,8 +7,8 @@ resolver = "2"
 [dependencies]
 anyhow = "1.0"
 reqwest = "0.12.12"
-# Resolver floor for Sui 1.41 jsonrpsee transport compatibility.
-rustls-platform-verifier = "=0.3.4"
+# Keep the verifier on rustls-webpki 0.103, avoiding the vulnerable 0.102 line.
+rustls-platform-verifier = "=0.5.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
