@@ -21,10 +21,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Regenerate lockfile from manifests
+      - name: Refresh compatible locked dependencies
+        shell: bash
         run: |
           set -euo pipefail
-          cargo generate-lockfile
+          # Resolve the newer Sui SDK's shared roaring constraint before
+          # updating the remaining lock entry. Preserve the existing lockfile:
+          # it contains the already-yanked core2 0.4.0 required by multiaddr.
+          cargo update -p roaring --precise 0.10.12
+          cargo update -p pin-project-lite --precise 0.2.17
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
