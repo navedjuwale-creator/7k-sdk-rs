@@ -7,7 +7,7 @@ resolver = "2"
 [dependencies]
 anyhow = "1.0"
 reqwest = "0.12.12"
-# Resolver floor for Sui 1.41 jsonrpsee transport compatibility.
+# Retained explicit verifier floor pending upstream Sui dependency validation.
 rustls-platform-verifier = "=0.3.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -17,25 +17,25 @@ tokio = { version = "1.40", features = ["full"] }
 
 [dependencies.sui_sdk]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.41.0"
+rev = "aa1b58682b2e16e42d7c03de1853de25c74a4598"
 package = "sui-sdk"
 
 [dependencies.sui_keys]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.41.0"
+rev = "aa1b58682b2e16e42d7c03de1853de25c74a4598"
 package = "sui-keys"
 
 [dependencies.move_core_types]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.41.0"
+rev = "aa1b58682b2e16e42d7c03de1853de25c74a4598"
 package = "move-core-types"
 
 [dependencies.shared_crypto]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.41.0"
+rev = "aa1b58682b2e16e42d7c03de1853de25c74a4598"
 package = "shared-crypto"
 
 [dependencies.sui_transaction_builder]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.41.0"
+rev = "aa1b58682b2e16e42d7c03de1853de25c74a4598"
 package = "sui-transaction-builder"
