@@ -1,12 +1,9 @@
-name: Isolated quinn-proto remediation candidate
+name: Isolated Quinn transport remediation candidate
 
 on:
   push:
     branches:
       - security/quinn-proto-isolated-candidate
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -18,7 +15,7 @@ concurrency:
 
 jobs:
   candidate:
-    name: Update one transport dependency and verify
+    name: Update compatible Quinn transport pair and verify
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -33,16 +30,23 @@ jobs:
         run: |
           cp Cargo.lock Cargo.lock.before
           cargo tree --locked --invert='quinn-proto@0.11.8' > quinn-proto-path-before.txt
+          cargo tree --locked --invert='quinn@0.11.2' > quinn-path-before.txt
 
-      - name: Update only quinn-proto
-        run: cargo update -p quinn-proto --precise 0.11.19
+      # quinn 0.11.2 does not compile against quinn-proto 0.11.19:
+      # it calls ClosedStream::new(), which was removed from the newer proto API.
+      # Upgrade the paired wrapper first, then pin the patched protocol crate.
+      - name: Update compatible Quinn transport pair
+        run: |
+          cargo update -p quinn --precise 0.11.12
+          cargo update -p quinn-proto --precise 0.11.19
 
       - name: Record candidate delta
         run: |
           cargo tree --locked --invert='quinn-proto@0.11.19' > quinn-proto-path-after.txt
+          cargo tree --locked --invert='quinn@0.11.12' > quinn-path-after.txt
           diff -u Cargo.lock.before Cargo.lock > Cargo.lock.diff || test "$?" -eq 1
           cargo tree --locked --prefix none > dependency-tree-after.txt
-          grep -E '^(quinn-proto|quinn|rustls|rustls-webpki|ring|bytes) v' dependency-tree-after.txt || true
+          grep -E '^(quinn-proto|quinn|quinn-udp|rustls|rustls-webpki|ring|bytes) v' dependency-tree-after.txt || true
 
       - name: Verify lockfile and compile
         run: |
@@ -53,7 +57,6 @@ jobs:
         run: cargo test --locked
 
       - name: Audit candidate lockfile
-        id: audit
         continue-on-error: true
         run: |
           cargo install cargo-audit --locked
@@ -63,13 +66,15 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: quinn-proto-isolated-candidate
+          name: quinn-transport-pair-candidate
           path: |
             Cargo.lock.before
             Cargo.lock
             Cargo.lock.diff
             quinn-proto-path-before.txt
             quinn-proto-path-after.txt
+            quinn-path-before.txt
+            quinn-path-after.txt
             dependency-tree-after.txt
           if-no-files-found: warn
           retention-days: 14
