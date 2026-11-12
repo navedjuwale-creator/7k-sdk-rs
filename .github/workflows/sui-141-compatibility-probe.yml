@@ -26,12 +26,12 @@ jobs:
         run: |
           set -euo pipefail
           # Resolve the newer Sui SDK's shared roaring constraint and unlock
-          # the existing pin-project-lite, syn v2 and rustls verifier entries.
+          # the existing jsonrpsee family, pin-project-lite and syn v2 entries.
           # Preserve the existing lockfile because multiaddr requires the
           # already-yanked core2 0.4.0 entry.
           # Unlock the selected syn v2 package explicitly; the lockfile also contains
           # syn v0.15 and v1, so an unqualified package selector is ambiguous.
-          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p rustls-platform-verifier
+          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
