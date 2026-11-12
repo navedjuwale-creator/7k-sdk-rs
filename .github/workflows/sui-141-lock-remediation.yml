@@ -34,7 +34,7 @@ jobs:
           # --precise applies to a single package selector, so pin roaring
           # in its own invocation before refreshing the remaining families.
           cargo update -p roaring --precise 0.10.12
-          cargo update -p pin-project-lite --precise 0.2.17
+          cargo update -p pin-project-lite@0.2.13 --precise 0.2.17
           cargo update \
             -p reqwest -p url \
             -p aes-gcm -p bytes \
