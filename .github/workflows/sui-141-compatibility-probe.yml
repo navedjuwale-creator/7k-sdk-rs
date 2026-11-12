@@ -21,6 +21,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
+      - name: Refresh only the conflicting roaring lock entry
+        run: cargo update -p roaring --precise 0.10.12
       - name: Resolve dependency graph
         run: |
           set -euo pipefail
