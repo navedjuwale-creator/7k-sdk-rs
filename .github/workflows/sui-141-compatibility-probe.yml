@@ -1,0 +1,57 @@
+name: Sui 1.41 compatibility and security probe
+
+on:
+  push:
+    branches:
+      - security/sui-1-41-compatibility-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-141-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve dependency graph
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 > metadata.json
+          cargo tree --prefix none > dependency-tree.txt
+      - name: Compile
+        run: cargo check
+      - name: Tests
+        run: cargo test
+      - name: Blocking security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          set -e
+          echo "$status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$status"
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sui-141-compatibility-evidence
+          path: |
+            Cargo.lock
+            metadata.json
+            dependency-tree.txt
+            cargo-audit.json
+            cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
