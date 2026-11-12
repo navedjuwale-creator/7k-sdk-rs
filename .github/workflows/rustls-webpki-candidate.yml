@@ -36,14 +36,13 @@ jobs:
           cargo tree --locked --invert='rustls@0.23.12' > rustls-path-before.txt
 
       # Updating rustls resolves its compatible rustls-webpki dependency.
-      # Avoid a second unqualified update because multiple webpki versions can
-      # coexist in this graph, making the package selector ambiguous.
+      # Older webpki versions may remain for unrelated dependents, so validate
+      # the dependency subtree of the upgraded rustls package specifically.
       - name: Update TLS verifier pair
         run: |
           cargo update -p rustls@0.23.12 --precise 0.23.46
-          grep -q 'name = "rustls-webpki"' Cargo.lock
-          grep -q 'version = "0.103.16"' Cargo.lock
-          ! grep -A1 'name = "rustls-webpki"' Cargo.lock | grep -q 'version = "0.102.6"'
+          cargo tree --locked -p rustls@0.23.46 | tee rustls-upgraded-tree.txt
+          grep -Fq 'rustls-webpki v0.103.16' rustls-upgraded-tree.txt
 
       - name: Record candidate delta
         run: |
@@ -80,6 +79,7 @@ jobs:
             rustls-webpki-path-after.txt
             rustls-path-before.txt
             rustls-path-after.txt
+            rustls-upgraded-tree.txt
             dependency-tree-after.txt
           if-no-files-found: warn
           retention-days: 14
