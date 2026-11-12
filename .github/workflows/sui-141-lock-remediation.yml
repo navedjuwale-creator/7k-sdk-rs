@@ -37,7 +37,7 @@ jobs:
             -p crossbeam-epoch -p h2@0.3.26 -p h2@0.4.5 \
             -p quinn-proto -p ring@0.17.8 \
             -p rustls@0.20.9 -p rustls@0.23.12 -p rustls-webpki@0.102.6 \
-            -p webpki-roots -p time \
+            -p webpki-roots@0.22.6 -p webpki-roots@0.26.3 -p time \
             -p zstd-safe -p zstd-sys
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
