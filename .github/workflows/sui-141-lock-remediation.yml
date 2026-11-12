@@ -31,6 +31,9 @@ jobs:
           # These selectors target fixes that may fit existing parent ranges:
           # reqwest/url (HTTP, IDNA and roots), AES-GCM, bytes, crossbeam,
           # h2, Quinn, rustls, time, and zstd-safe.
+          # --precise applies to a single package selector, so pin roaring
+          # in its own invocation before refreshing the remaining families.
+          cargo update -p roaring --precise 0.10.12
           cargo update \
             -p reqwest -p url \
             -p aes-gcm -p bytes \
@@ -38,8 +41,7 @@ jobs:
             -p quinn-proto -p ring@0.17.8 \
             -p rustls@0.20.9 -p rustls@0.23.12 -p rustls-webpki@0.102.6 \
             -p webpki-roots@0.22.6 -p webpki-roots@0.26.3 -p time \
-            -p zstd-safe -p zstd-sys \\
-            -p roaring --precise 0.10.12
+            -p zstd-safe -p zstd-sys
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
