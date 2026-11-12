@@ -1,0 +1,77 @@
+name: Sui 1.41 targeted lock remediation candidate
+
+on:
+  push:
+    branches:
+      - security/sui-141-lock-remediation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-141-lock-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  remediation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Refresh only selected compatible dependency families
+        shell: bash
+        run: |
+          set -euo pipefail
+          # This is a bounded lockfile-only remediation experiment.
+          # Never run unrestricted cargo update: the existing lockfile
+          # intentionally retains yanked core2 0.4.0 for multiaddr.
+          # These selectors target fixes that may fit existing parent ranges:
+          # reqwest/url (HTTP, IDNA and roots), AES-GCM, bytes, crossbeam,
+          # h2, Quinn, rustls, time, and zstd-safe.
+          cargo update \
+            -p reqwest -p url \
+            -p aes-gcm -p bytes \
+            -p crossbeam-epoch -p h2 \
+            -p quinn-proto -p ring@0.17.8 \
+            -p rustls -p rustls-webpki@0.102.6 \
+            -p webpki-roots -p time \
+            -p zstd-safe -p zstd-sys
+          git diff -- Cargo.lock > cargo-lock.diff
+      - name: Resolve dependency graph
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 > metadata.json
+          cargo tree --prefix none > dependency-tree.txt
+      - name: Compile
+        run: cargo check
+      - name: Tests
+        run: cargo test
+      - name: Blocking security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          set -e
+          echo "$status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$status"
+      - name: Upload remediation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sui-141-lock-remediation-evidence
+          path: |
+            Cargo.lock
+            cargo-lock.diff
+            metadata.json
+            dependency-tree.txt
+            cargo-audit.json
+            cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
