@@ -39,7 +39,7 @@ jobs:
             -p reqwest -p url \
             -p aes-gcm -p bytes \
             -p crossbeam-epoch -p h2@0.4.5 \
-            -p quinn-proto -p ring@0.17.8 \
+            -p quinn -p quinn-proto -p ring@0.17.8 \
             -p rustls-webpki@0.102.6 \
             -p webpki-roots@0.26.3 -p time \
             -p zstd-safe -p zstd-sys
