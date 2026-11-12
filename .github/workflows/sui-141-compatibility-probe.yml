@@ -31,7 +31,7 @@ jobs:
           # already-yanked core2 0.4.0 entry.
           # Unlock the selected syn v2 package explicitly; the lockfile also contains
           # syn v0.15 and v1, so an unqualified package selector is ambiguous.
-          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p rustls-platform-verifier
+          cargo update
           git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
