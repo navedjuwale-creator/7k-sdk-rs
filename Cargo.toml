@@ -15,25 +15,25 @@ tokio = { version = "1.40", features = ["full"] }
 
 [dependencies.sui_sdk]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.39.3"                   # must match sui/boat_fun/Move.toml
+tag = "testnet-v1.41.0"
 package = "sui-sdk"
 
 [dependencies.sui_keys]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.39.3"                   # must match sui/boat_fun/Move.toml
+tag = "testnet-v1.41.0"
 package = "sui-keys"
 
 [dependencies.move_core_types]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.39.3"                   # must match sui/boat_fun/Move.toml
+tag = "testnet-v1.41.0"
 package = "move-core-types"
 
 [dependencies.shared_crypto]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.39.3"                   # must match sui/boat_fun/Move.toml
+tag = "testnet-v1.41.0"
 package = "shared-crypto"
 
 [dependencies.sui_transaction_builder]
 git = "https://github.com/mystenlabs/sui"
-tag = "testnet-v1.39.3"                   # must match sui/boat_fun/Move.toml
+tag = "testnet-v1.41.0"
 package = "sui-transaction-builder"
