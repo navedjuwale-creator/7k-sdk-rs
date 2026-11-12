@@ -21,10 +21,11 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - name: Refresh only the conflicting lock entries
+      - name: Regenerate lockfile from manifests
         run: |
-          cargo update -p pin-project-lite --precise 0.2.17
-          cargo update -p roaring --precise 0.10.12
+          set -euo pipefail
+          cargo generate-lockfile
+          git diff -- Cargo.lock > cargo-lock.diff
       - name: Resolve dependency graph
         run: |
           set -euo pipefail
@@ -53,6 +54,7 @@ jobs:
           name: sui-141-compatibility-evidence
           path: |
             Cargo.lock
+            cargo-lock.diff
             metadata.json
             dependency-tree.txt
             cargo-audit.json
