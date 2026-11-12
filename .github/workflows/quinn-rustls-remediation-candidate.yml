@@ -3,7 +3,7 @@ name: Transitive remediation Quinn and Rustls candidate
 on:
   push:
     branches:
-      - security/transitive-remediation-quinn-rustls-candidate
+      - security/transitive-remediation-quinn-pair-candidate
   workflow_dispatch:
 
 permissions:
@@ -47,6 +47,7 @@ jobs:
               echo "RESULT: no compatible update (exit $status)" | tee -a update-results.txt
             fi
           done <<'PACKAGES'
+          quinn
           quinn-proto
           rustls@0.23.12
           rustls-webpki@0.102.6
