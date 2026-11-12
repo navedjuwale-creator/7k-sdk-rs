@@ -1,0 +1,115 @@
+name: Dependency security baseline (seeded lockfile)
+
+on:
+  push:
+    branches:
+      - security/clean-audit-baseline
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-audit:
+    name: Resolve and audit dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # The pinned Sui SDK graph requires yanked core2 0.4.0; a fresh resolution fails.
+      # Use the previously resolved lockfile only as an audit seed, not as proof of freshness.
+      - name: Validate the seeded lockfile against the manifest
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
+      - name: Record resolved versions
+        run: |
+          cargo tree --locked --prefix none > dependency-tree.txt
+          grep -E '^(anyhow|quick-xml|object_store|quinn-proto|rustls|bytes) v' dependency-tree.txt || true
+          echo "Resolved dependency count:"
+          wc -l < dependency-tree.txt
+
+      - name: Record inverse dependency paths for priority findings
+        run: |
+          set +e
+          : > dependency-paths.txt
+          for package in \
+            'aes-gcm@0.10.1' \
+            'bytes@1.8.0' \
+            'core2@0.4.0' \
+            'crossbeam-epoch@0.9.18' \
+            'crypto-bigint@0.4.9' \
+            'crypto-bigint@0.5.1' \
+            'ethnum@1.5.3' \
+            'futures-util@0.3.30' \
+            'h2@0.3.26' \
+            'h2@0.4.5' \
+            'idna@0.5.0' \
+            'protobuf@2.28.0' \
+            'quick-xml@0.36.1' \
+            'quinn-proto@0.11.8' \
+            'ring@0.16.20' \
+            'ring@0.17.8' \
+            'rsa@0.8.2' \
+            'rustls@0.20.9' \
+            'rustls@0.23.12' \
+            'rustls-webpki@0.102.6' \
+            'spin@0.9.8' \
+            'time@0.3.36' \
+            'webpki-roots@0.22.6' \
+            'webpki-roots@0.26.3' \
+            'zstd@0.13.2' \
+            'zstd-safe@7.2.1' \
+            'zstd-sys@2.0.11+zstd.1.5.6'; do
+            printf '\n===== %s =====\n' "$package" >> dependency-paths.txt
+            cargo tree --locked --invert="$package" --edges normal,build,dev >> dependency-paths.txt 2>&1
+          done
+          cat dependency-paths.txt
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit the seeded lockfile
+        id: audit
+        continue-on-error: true
+        run: cargo audit --file Cargo.lock
+
+      - name: Verify the resolved graph compiles independently
+        id: compile
+        if: always()
+        run: cargo check --locked
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependency-audit-evidence
+          path: |
+            dependency-tree.txt
+            dependency-paths.txt
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Preserve failing result if audit or compilation failed
+        if: always()
+        env:
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          COMPILE_OUTCOME: ${{ steps.compile.outcome }}
+        run: |
+          echo "Audit outcome: $AUDIT_OUTCOME"
+          echo "Compile outcome: $COMPILE_OUTCOME"
+          test "$AUDIT_OUTCOME" = success && test "$COMPILE_OUTCOME" = success
