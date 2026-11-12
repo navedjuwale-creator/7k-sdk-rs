@@ -31,8 +31,11 @@ jobs:
           # Preserve the baseline's bounded refresh; never run unrestricted cargo update.
           # Resolve the WebPKI minimum first; the existing lock selects 1.7.0 via reqwest.
           cargo update -p rustls-pki-types --precise 1.11.0
-          # Then apply the baseline's existing bounded compatibility refresh.
-          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
+          # Update each package independently so --precise applies unambiguously.
+          cargo update -p roaring@0.10.6 --precise 0.10.12
+          cargo update -p pin-project-lite
+          cargo update -p syn@2.0.79
+          cargo update -p jsonrpsee
           cargo metadata --format-version 1 > metadata.json
           cargo tree --prefix none > dependency-tree.txt
           cargo tree -i rustls-webpki@0.103.16 || true
