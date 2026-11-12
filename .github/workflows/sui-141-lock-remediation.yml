@@ -31,9 +31,10 @@ jobs:
           # These selectors target fixes that may fit existing parent ranges:
           # reqwest/url (HTTP, IDNA and roots), AES-GCM, bytes, crossbeam,
           # h2, Quinn, rustls, time, and zstd-safe.
-          # Refresh both resolver blockers together so Cargo can select a
-          # single compatible graph for the Sui 1.41 dependency set.
-          cargo update -p pin-project-lite -p roaring -p syn@2.0.79 -p rustls-platform-verifier@0.3.0
+          # Refresh the locked resolver blockers together. The Sui 1.41 graph
+          # introduces rustls-platform-verifier, which is absent from this
+          # lockfile; let Cargo resolve that new transitive package naturally.
+          cargo update -p pin-project-lite -p roaring -p syn@2.0.79
           cargo update \
             -p reqwest -p url \
             -p aes-gcm -p bytes \
