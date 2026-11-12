@@ -1,0 +1,65 @@
+name: Sui 1.41 Anemo WebPKI compatibility probe
+
+on:
+  push:
+    branches:
+      - security/sui-141-anemo-webpki-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-141-anemo-webpki-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve patched Anemo graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Preserve the baseline's bounded refresh; never run unrestricted cargo update.
+          cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
+          cargo metadata --format-version 1 > metadata.json
+          cargo tree --prefix none > dependency-tree.txt
+          cargo tree -i rustls-webpki@0.103.16 || true
+          cargo tree -i rustls-webpki@0.102.6 || true
+          git diff -- Cargo.lock > cargo-lock.diff
+      - name: Compile
+        run: cargo check
+      - name: Tests
+        run: cargo test
+      - name: Blocking security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          set -e
+          echo "$status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$status"
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sui-141-anemo-webpki-probe-evidence
+          path: |
+            Cargo.toml
+            Cargo.lock
+            cargo-lock.diff
+            metadata.json
+            dependency-tree.txt
+            cargo-audit.json
+            cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
