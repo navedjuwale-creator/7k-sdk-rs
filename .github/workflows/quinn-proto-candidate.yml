@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - security/quinn-proto-isolated-candidate
+  pull_request:
+    branches:
+      - security/clean-audit-baseline
   workflow_dispatch:
 
 permissions:
