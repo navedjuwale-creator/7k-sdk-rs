@@ -40,7 +40,7 @@ jobs:
             -p aes-gcm -p bytes \
             -p crossbeam-epoch -p h2@0.4.5 \
             -p quinn -p quinn-proto -p ring@0.17.8 \
-            -p rustls@0.23.31 -p rustls-webpki@0.102.8 \
+            -p rustls@0.23.31 -p rustls-webpki@0.102.6 \
             -p webpki-roots@0.26.3 -p time \
             -p zstd@0.13.2 -p zstd-safe -p zstd-sys
           git diff -- Cargo.lock > cargo-lock.diff
