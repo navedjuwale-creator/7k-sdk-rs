@@ -30,6 +30,8 @@ jobs:
           git -C ../anemo checkout 9c52c3c7946532163a79129db15180cdb984bab4
           # Preserve the baseline's bounded refresh; never run unrestricted cargo update.
           cargo update -p roaring --precise 0.10.12 -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
+          # The updated WebPKI requires rustls-pki-types >=1.11; reqwest's range permits it.
+          cargo update -p rustls-pki-types --precise 1.11.0
           cargo metadata --format-version 1 > metadata.json
           cargo tree --prefix none > dependency-tree.txt
           cargo tree -i rustls-webpki@0.103.16 || true
