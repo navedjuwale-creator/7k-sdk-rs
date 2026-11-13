@@ -129,8 +129,38 @@ jobs:
         working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
         run: |
           set -euo pipefail
-          cargo generate-lockfile
-          cargo metadata --format-version 1 --locked > metadata.json
+          # Seed the isolated fixture with the exact legacy SDK release lockfile.
+          # This preserves the already-locked yanked core2 0.4.0 required by Sui 1.41.0.
+          curl --fail --silent --show-error --location \\
+            https://raw.githubusercontent.com/MystenLabs/sui/4b4e533f03530cc8eb9af1ed004aecfe95756e28/Cargo.lock \\
+            --output Cargo.lock
+          grep -A 5 '^name = "core2" > metadata.json
+
+      - name: Compile and run compatibility fixture
+        working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
+        run: |
+          set -euo pipefail
+          cargo fmt --all
+          cargo fmt --check
+          cargo test --locked --all-targets
+
+      - name: Upload transaction compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: modular-sui-transaction-compatibility-evidence
+          path: |
+            ${{ runner.temp }}/modular-sui-transaction-probe/Cargo.toml
+            ${{ runner.temp }}/modular-sui-transaction-probe/Cargo.lock
+            ${{ runner.temp }}/modular-sui-transaction-probe/probe-info.txt
+            ${{ runner.temp }}/modular-sui-transaction-probe/metadata.json
+            ${{ runner.temp }}/modular-sui-transaction-probe/legacy.ptb.bcs
+            ${{ runner.temp }}/modular-sui-transaction-probe/modular.ptb.bcs
+          if-no-files-found: warn
+          retention-days: 14
+ Cargo.lock
+          cargo metadata --format-version 1 > metadata.json
+          cargo metadata --format-version 1 --locked > /dev/null > metadata.json
 
       - name: Compile and run compatibility fixture
         working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
