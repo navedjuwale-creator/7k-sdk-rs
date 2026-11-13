@@ -132,10 +132,10 @@ jobs:
           # Seed with pinned Sui 1.41.0 lockfile to retain yanked core2 0.4.0.
           curl --fail --silent --show-error --location --output Cargo.lock "https://raw.githubusercontent.com/MystenLabs/sui/4b4e533f03530cc8eb9af1ed004aecfe95756e28/Cargo.lock"
           grep -A 5 'name = "core2"' Cargo.lock
+          # Advance async-trait first so the legacy lockfile's 0.1.73 does not block serde resolution.
+          cargo update -p async-trait --precise 0.1.92
           # Modular SDK requires serde >=1.0.228; advance only that locked crate.
           cargo update -p serde --precise 1.0.229
-          # Modular transaction builder requires async-trait >=0.1.89.
-          cargo update -p async-trait --precise 0.1.92
           cargo metadata --format-version 1 > metadata.json
           cargo metadata --format-version 1 --locked > /dev/null
 
