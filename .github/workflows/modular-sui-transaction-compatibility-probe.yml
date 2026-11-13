@@ -129,9 +129,12 @@ jobs:
         working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
         run: |
           set -euo pipefail
-          # Seed with the pinned Sui 1.41.0 release lockfile to retain yanked core2 0.4.0.
+          # Seed with pinned Sui 1.41.0 lockfile to retain yanked core2 0.4.0.
           curl --fail --silent --show-error --location --output Cargo.lock "https://raw.githubusercontent.com/MystenLabs/sui/4b4e533f03530cc8eb9af1ed004aecfe95756e28/Cargo.lock"
-          grep -A 5 '^name = "core2"
+          grep -A 5 'name = "core2"' Cargo.lock
+          # Modular SDK requires serde >=1.0.228; advance only that locked crate.
+          cargo update -p serde --precise 1.0.229
+          cargo metadata --format-version 1 > metadata.json
           cargo metadata --format-version 1 --locked > /dev/null
 
       - name: Compile and run compatibility fixture
