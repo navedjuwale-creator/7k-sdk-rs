@@ -1,0 +1,128 @@
+name: Modular Sui transaction compatibility probe
+
+on:
+  push:
+    branches:
+      - security/modular-sui-sdk-dependency-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modular-sui-transaction-compatibility-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  transaction-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Create isolated transaction compatibility fixture
+        shell: bash
+        env:
+          PROBE_DIR: ${{ runner.temp }}/modular-sui-transaction-probe
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROBE_DIR/src"
+          cat > "$PROBE_DIR/Cargo.toml" <<'EOF'
+          [package]
+          name = "modular-sui-transaction-compatibility-probe"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          sui-sdk-types = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-sdk-types", default-features = false, features = ["serde", "hash"] }
+          sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-transaction-builder" }
+          EOF
+          cat > "$PROBE_DIR/src/lib.rs" <<'EOF'
+          use sui_sdk_types::{Address, Digest};
+          use sui_sdk_types::bcs::{FromBcs, ToBcs};
+          use sui_transaction_builder::{ObjectInput, TransactionBuilder};
+
+          // Offline analogue of the application's common PTB flow:
+          // split gas coin, then transfer the split result.
+          fn build_fixture() -> sui_sdk_types::Transaction {
+              let mut tx = TransactionBuilder::new();
+
+              let amount = tx.pure(&1_000_000_000u64);
+              let gas = tx.gas();
+              let coins = tx.split_coins(gas, vec![amount]);
+
+              let recipient = tx.pure(&Address::ZERO);
+              tx.transfer_objects(coins, recipient);
+
+              tx.set_sender(Address::ZERO);
+              tx.set_gas_budget(500_000_000);
+              tx.set_gas_price(1_000);
+              tx.add_gas_objects([ObjectInput::owned(Address::ZERO, 1, Digest::ZERO)]);
+
+              tx.try_build().expect("fixture transaction should build")
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+
+              #[test]
+              fn legacy_style_address_literals_parse() {
+                  let address = Address::from_hex(
+                      "0x0000000000000000000000000000000000000000000000000000000000000000"
+                  ).expect("32-byte Sui address");
+                  assert_eq!(address, Address::ZERO);
+              }
+
+              #[test]
+              fn ptb_builds_and_bcs_round_trips() {
+                  let tx = build_fixture();
+                  let bytes = tx.to_bcs().expect("serialize transaction to BCS");
+                  assert!(!bytes.is_empty());
+
+                  let decoded = sui_sdk_types::Transaction::from_bcs(&bytes)
+                      .expect("deserialize transaction from BCS");
+                  assert_eq!(decoded, tx);
+              }
+
+              #[test]
+              fn ptb_bcs_is_deterministic_for_identical_inputs() {
+                  let first = build_fixture().to_bcs().expect("first BCS encoding");
+                  let second = build_fixture().to_bcs().expect("second BCS encoding");
+                  assert_eq!(first, second);
+              }
+          }
+          EOF
+          printf 'SDK revision: 788907487b40bc341bd90ee26428c4098fc1e515\n' > "$PROBE_DIR/probe-info.txt"
+          printf 'Scope: offline PTB construction, address parsing, deterministic BCS encoding, BCS round-trip\n' >> "$PROBE_DIR/probe-info.txt"
+          printf 'No application source, signing, network submission, or wallet access\n' >> "$PROBE_DIR/probe-info.txt"
+
+      - name: Resolve and lock fixture dependencies
+        working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo metadata --format-version 1 --locked > metadata.json
+
+      - name: Compile and run compatibility fixture
+        working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
+        run: |
+          set -euo pipefail
+          cargo fmt --check
+          cargo test --locked --all-targets
+
+      - name: Upload transaction compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: modular-sui-transaction-compatibility-evidence
+          path: |
+            ${{ runner.temp }}/modular-sui-transaction-probe/Cargo.toml
+            ${{ runner.temp }}/modular-sui-transaction-probe/Cargo.lock
+            ${{ runner.temp }}/modular-sui-transaction-probe/probe-info.txt
+            ${{ runner.temp }}/modular-sui-transaction-probe/metadata.json
+          if-no-files-found: warn
+          retention-days: 14
