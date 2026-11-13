@@ -1,0 +1,112 @@
+name: Modular Sui Rust SDK dependency probe
+
+on:
+  push:
+    branches:
+      - security/modular-sui-sdk-dependency-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: modular-sui-sdk-dependency-probe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dependency-probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Create isolated probe project
+        shell: bash
+        env:
+          PROBE_DIR: ${{ runner.temp }}/modular-sui-sdk-probe
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROBE_DIR/src"
+          cat > "$PROBE_DIR/Cargo.toml" <<'EOF'
+          [package]
+          name = "modular-sui-sdk-dependency-probe"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          sui-rpc = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-rpc" }
+          sui-sdk-types = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-sdk-types", default-features = false, features = ["serde", "hash"] }
+          sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-transaction-builder" }
+          EOF
+          cat > "$PROBE_DIR/src/lib.rs" <<'EOF'
+          pub fn modular_sdk_crate_names() -> [&'static str; 3] {
+              [
+                  core::any::type_name::<sui_rpc::Client>(),
+                  core::any::type_name::<sui_sdk_types::ObjectReference>(),
+                  core::any::type_name::<sui_transaction_builder::TransactionBuilder>(),
+              ]
+          }
+
+          #[cfg(test)]
+          mod tests {
+              #[test]
+              fn all_three_pinned_sdk_crates_are_linked() {
+                  assert!(super::modular_sdk_crate_names()
+                      .iter()
+                      .all(|name| !name.is_empty()));
+              }
+          }
+          EOF
+          printf 'SDK revision: 788907487b40bc341bd90ee26428c4098fc1e515\n' > "$PROBE_DIR/probe-info.txt"
+          printf 'Features: sui-sdk-types serde,hash; sui-transaction-builder defaults (intents); sui-rpc defaults\n' >> "$PROBE_DIR/probe-info.txt"
+
+      - name: Resolve and lock exact dependency graph
+        working-directory: ${{ runner.temp }}/modular-sui-sdk-probe
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          cargo metadata --format-version 1 --locked > metadata.json
+          cargo tree --edges normal --prefix none --locked > dependency-tree.txt
+          cargo tree --duplicates --locked > duplicate-dependencies.txt
+
+      - name: Compile isolated SDK dependency set
+        working-directory: ${{ runner.temp }}/modular-sui-sdk-probe
+        run: cargo check --locked
+
+      - name: Run smoke test
+        working-directory: ${{ runner.temp }}/modular-sui-sdk-probe
+        run: cargo test --locked
+
+      - name: Install and run security audit
+        working-directory: ${{ runner.temp }}/modular-sui-sdk-probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          set -e
+          printf '%s\n' "$status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$status"
+
+      - name: Upload dependency evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: modular-sui-sdk-dependency-evidence
+          path: |
+            ${{ runner.temp }}/modular-sui-sdk-probe/Cargo.toml
+            ${{ runner.temp }}/modular-sui-sdk-probe/Cargo.lock
+            ${{ runner.temp }}/modular-sui-sdk-probe/probe-info.txt
+            ${{ runner.temp }}/modular-sui-sdk-probe/metadata.json
+            ${{ runner.temp }}/modular-sui-sdk-probe/dependency-tree.txt
+            ${{ runner.temp }}/modular-sui-sdk-probe/duplicate-dependencies.txt
+            ${{ runner.temp }}/modular-sui-sdk-probe/cargo-audit.json
+            ${{ runner.temp }}/modular-sui-sdk-probe/cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
