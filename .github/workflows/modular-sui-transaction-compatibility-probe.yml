@@ -134,6 +134,8 @@ jobs:
           grep -A 5 'name = "core2"' Cargo.lock
           # Modular SDK requires serde >=1.0.228; advance only that locked crate.
           cargo update -p serde --precise 1.0.229
+          # Modular transaction builder requires async-trait >=0.1.89.
+          cargo update -p async-trait --precise 0.1.92
           cargo metadata --format-version 1 > metadata.json
           cargo metadata --format-version 1 --locked > /dev/null
 
