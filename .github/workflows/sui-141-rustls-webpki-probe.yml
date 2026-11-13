@@ -29,9 +29,11 @@ jobs:
           git -C ../anemo checkout 9c52c3c7946532163a79129db15180cdb984bab4
           # Rustls 0.23.46 requires rustls-pki-types 1.12+ and WebPKI 0.103.14+.
           # Keep every update bounded; do not run unrestricted cargo update.
+          # Resolve the known old roaring lock selection before any graph-wide solve.
+          cargo update -p roaring --precise 0.10.12
           cargo update -p rustls-pki-types --precise 1.12.0
           cargo update -p rustls --precise 0.23.46
-          cargo update -p roaring -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
+          cargo update -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
           cargo metadata --format-version 1 > metadata.json
           cargo tree --prefix none > dependency-tree.txt
           cargo tree -i rustls-webpki@0.103.16 || true
