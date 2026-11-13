@@ -111,6 +111,7 @@ jobs:
         working-directory: ${{ runner.temp }}/modular-sui-transaction-probe
         run: |
           set -euo pipefail
+          cargo fmt --all
           cargo fmt --check
           cargo test --locked --all-targets
 
