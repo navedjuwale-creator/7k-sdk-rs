@@ -30,8 +30,7 @@ jobs:
           # Rustls 0.23.46 requires rustls-pki-types 1.12+ and WebPKI 0.103.14+.
           # Keep every update bounded; do not run unrestricted cargo update.
           # Resolve both known lock conflicts in one bounded solver pass.
-          cargo update -p pin-project-lite -p roaring
-          cargo update -p rustls-pki-types --precise 1.12.0
+          cargo update -p pin-project-lite -p roaring -p rustls-pki-types
           cargo update -p rustls --precise 0.23.46
           cargo update -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
           cargo metadata --format-version 1 > metadata.json
