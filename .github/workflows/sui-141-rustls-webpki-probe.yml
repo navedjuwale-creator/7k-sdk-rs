@@ -1,0 +1,71 @@
+name: Sui 1.41 Rustls WebPKI compatibility probe
+
+on:
+  push:
+    branches:
+      - security/sui-141-rustls-webpki-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sui-141-rustls-webpki-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Resolve patched Anemo and current Rustls graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/mystenlabs/anemo ../anemo
+          git -C ../anemo checkout 9c52c3c7946532163a79129db15180cdb984bab4
+          # Rustls 0.23.46 requires rustls-pki-types 1.12+ and WebPKI 0.103.14+.
+          # Keep every update bounded; do not run unrestricted cargo update.
+          cargo update -p rustls-pki-types --precise 1.12.0
+          cargo update -p rustls --precise 0.23.46
+          cargo update -p roaring -p pin-project-lite -p syn@2.0.79 -p jsonrpsee
+          cargo metadata --format-version 1 > metadata.json
+          cargo tree --prefix none > dependency-tree.txt
+          cargo tree -i rustls-webpki@0.103.16 || true
+          cargo tree -i rustls-webpki@0.102.6 || true
+          cargo tree -i rustls@0.23.46 || true
+          git diff -- Cargo.lock > cargo-lock.diff
+      - name: Compile
+        run: cargo check
+      - name: Tests
+        run: cargo test
+      - name: Blocking security audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo install cargo-audit --locked
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          set -e
+          echo "$status" > cargo-audit.exit-code
+          cat cargo-audit.json
+          exit "$status"
+      - name: Upload probe evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: sui-141-rustls-webpki-probe-evidence
+          path: |
+            Cargo.toml
+            Cargo.lock
+            cargo-lock.diff
+            metadata.json
+            dependency-tree.txt
+            cargo-audit.json
+            cargo-audit.exit-code
+          if-no-files-found: warn
+          retention-days: 14
