@@ -37,32 +37,45 @@ jobs:
           edition = "2024"
 
           [dependencies]
+          bcs = "0.1"
+          sui-sdk = { git = "https://github.com/MystenLabs/sui", tag = "testnet-v1.41.0", package = "sui-sdk" }
           sui-sdk-types = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-sdk-types", default-features = false, features = ["serde", "hash"] }
           sui-transaction-builder = { git = "https://github.com/MystenLabs/sui-rust-sdk", rev = "788907487b40bc341bd90ee26428c4098fc1e515", package = "sui-transaction-builder" }
           EOF
           cat > "$PROBE_DIR/src/lib.rs" <<'EOF'
+          use sui_sdk::types::{
+              base_types::SuiAddress,
+              programmable_transaction_builder::ProgrammableTransactionBuilder,
+              transaction::{Argument as LegacyArgument, Command as LegacyCommand, TransactionKind as LegacyTransactionKind},
+          };
           use sui_sdk_types::{Address, Digest};
-          use sui_sdk_types::bcs::{FromBcs, ToBcs};
+          use sui_sdk_types::bcs::ToBcs;
           use sui_transaction_builder::{ObjectInput, TransactionBuilder};
 
-          // Offline analogue of the application's common PTB flow:
-          // split gas coin, then transfer the split result.
-          fn build_fixture() -> sui_sdk_types::Transaction {
-              let mut tx = TransactionBuilder::new();
+          fn build_legacy_kind() -> LegacyTransactionKind {
+              let mut builder = ProgrammableTransactionBuilder::new();
+              let amount = builder.pure(1_000_000_000u64).expect("legacy pure amount");
+              let coins = builder.command(LegacyCommand::SplitCoins(
+                  LegacyArgument::GasCoin,
+                  vec![amount],
+              ));
+              let recipient = builder.pure(SuiAddress::ZERO).expect("legacy recipient");
+              builder.command(LegacyCommand::TransferObjects(vec![coins], recipient));
+              LegacyTransactionKind::ProgrammableTransaction(builder.finish())
+          }
 
+          fn build_modular_transaction() -> sui_sdk_types::Transaction {
+              let mut tx = TransactionBuilder::new();
               let amount = tx.pure(&1_000_000_000u64);
               let gas = tx.gas();
               let coins = tx.split_coins(gas, vec![amount]);
-
               let recipient = tx.pure(&Address::ZERO);
               tx.transfer_objects(coins, recipient);
-
               tx.set_sender(Address::ZERO);
               tx.set_gas_budget(500_000_000);
               tx.set_gas_price(1_000);
               tx.add_gas_objects([ObjectInput::owned(Address::ZERO, 1, Digest::ZERO)]);
-
-              tx.try_build().expect("fixture transaction should build")
+              tx.try_build().expect("modular transaction should build")
           }
 
           #[cfg(test)]
@@ -70,34 +83,42 @@ jobs:
               use super::*;
 
               #[test]
-              fn legacy_style_address_literals_parse() {
-                  let address = Address::from_hex(
-                      "0x0000000000000000000000000000000000000000000000000000000000000000"
-                  ).expect("32-byte Sui address");
-                  assert_eq!(address, Address::ZERO);
+              fn legacy_and_modular_ptb_bcs_are_byte_identical() {
+                  let legacy = bcs::to_bytes(&build_legacy_kind())
+                      .expect("serialize legacy TransactionKind");
+                  let modular = build_modular_transaction().kind.to_bcs()
+                      .expect("serialize modular TransactionKind");
+
+                  std::fs::write("legacy.ptb.bcs", &legacy).expect("write legacy evidence");
+                  std::fs::write("modular.ptb.bcs", &modular).expect("write modular evidence");
+
+                  assert_eq!(
+                      legacy,
+                      modular,
+                      "legacy and modular TransactionKind BCS bytes differ"
+                  );
               }
 
               #[test]
-              fn ptb_builds_and_bcs_round_trips() {
-                  let tx = build_fixture();
-                  let bytes = tx.to_bcs().expect("serialize transaction to BCS");
-                  assert!(!bytes.is_empty());
-
+              fn modular_transaction_bcs_round_trips() {
+                  let tx = build_modular_transaction();
+                  let bytes = tx.to_bcs().expect("serialize full modular transaction");
                   let decoded = sui_sdk_types::Transaction::from_bcs(&bytes)
-                      .expect("deserialize transaction from BCS");
+                      .expect("deserialize modular transaction");
                   assert_eq!(decoded, tx);
               }
 
               #[test]
-              fn ptb_bcs_is_deterministic_for_identical_inputs() {
-                  let first = build_fixture().to_bcs().expect("first BCS encoding");
-                  let second = build_fixture().to_bcs().expect("second BCS encoding");
+              fn modular_ptb_bcs_is_deterministic() {
+                  let first = build_modular_transaction().kind.to_bcs().expect("first encoding");
+                  let second = build_modular_transaction().kind.to_bcs().expect("second encoding");
                   assert_eq!(first, second);
               }
           }
+
           EOF
           printf 'SDK revision: 788907487b40bc341bd90ee26428c4098fc1e515\n' > "$PROBE_DIR/probe-info.txt"
-          printf 'Scope: offline PTB construction, address parsing, deterministic BCS encoding, BCS round-trip\n' >> "$PROBE_DIR/probe-info.txt"
+          printf 'Scope: offline legacy-vs-modular TransactionKind BCS byte comparison, modular transaction BCS round-trip\n' >> "$PROBE_DIR/probe-info.txt"
           printf 'No application source, signing, network submission, or wallet access\n' >> "$PROBE_DIR/probe-info.txt"
 
       - name: Resolve and lock fixture dependencies
@@ -125,5 +146,7 @@ jobs:
             ${{ runner.temp }}/modular-sui-transaction-probe/Cargo.lock
             ${{ runner.temp }}/modular-sui-transaction-probe/probe-info.txt
             ${{ runner.temp }}/modular-sui-transaction-probe/metadata.json
+            ${{ runner.temp }}/modular-sui-transaction-probe/legacy.ptb.bcs
+            ${{ runner.temp }}/modular-sui-transaction-probe/modular.ptb.bcs
           if-no-files-found: warn
           retention-days: 14
