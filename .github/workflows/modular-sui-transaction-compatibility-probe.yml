@@ -55,12 +55,16 @@ jobs:
           fn build_legacy_kind() -> LegacyTransactionKind {
               let mut builder = ProgrammableTransactionBuilder::new();
               let amount = builder.pure(1_000_000_000u64).expect("legacy pure amount");
-              let coins = builder.command(LegacyCommand::SplitCoins(
+              builder.command(LegacyCommand::SplitCoins(
                   LegacyArgument::GasCoin,
                   vec![amount],
               ));
+              let first_split_coin = LegacyArgument::NestedResult(0, 0);
               let recipient = builder.pure(SuiAddress::ZERO).expect("legacy recipient");
-              builder.command(LegacyCommand::TransferObjects(vec![coins], recipient));
+              builder.command(LegacyCommand::TransferObjects(
+                  vec![first_split_coin],
+                  recipient,
+              ));
               LegacyTransactionKind::ProgrammableTransaction(builder.finish())
           }
 
